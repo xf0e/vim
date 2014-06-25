@@ -37,7 +37,7 @@ set linebreak   "wrap lines at convenient points
 
 if v:version >= 703
     "undo settings
-    set undodir=~/.vim/undofiles
+    set undodir=~/.undofiles
     set undofile
 
     set colorcolumn=81 "mark the ideal max text width
