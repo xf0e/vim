@@ -1,11 +1,2 @@
 let g:netrw_dirhistmax  =10
-let g:netrw_dirhist_cnt =9
-let g:netrw_dirhist_1='/home/xf0e'
-let g:netrw_dirhist_2='/home'
-let g:netrw_dirhist_3='/home/xf0e'
-let g:netrw_dirhist_4='/home/xf0e/.adobe'
-let g:netrw_dirhist_5='/home/xf0e'
-let g:netrw_dirhist_6='/tmp/src/licq-1.7.0/build/cmake'
-let g:netrw_dirhist_7='/home/xf0e'
-let g:netrw_dirhist_8='/home/xf0e/.IntelliJIdea13'
-let g:netrw_dirhist_9='/home/xf0e'
+let g:netrw_dirhist_cnt =0
