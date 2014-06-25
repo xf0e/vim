@@ -1,0 +1,61 @@
+spice.txt	カーソル下の単語を常にハイライトするプラグイン
+
+
+==============================================================================
+概要						*spice-introduction*
+
+*spice* はカーソル下の単語をカーソルが移動する度にハイライトするプラグインで
+す。
+
+
+==============================================================================
+インターフェース				*spice-interface*
+------------------------------------------------------------------------------
+コマンド					*spice-commands*
+
+:SpiceEnable					*:SpiceEnable*
+	ハイライトを有効にします。
+	この状態が既定値になります。
+
+:SpiceDisable					*:SpiceDisable*
+	ハイライトを無効にします。
+
+
+==============================================================================
+設定						*spice-setting*
+
+------------------------------------------------------------------------------
+変数						*spice-variables*
+
+g:spice_highlight_group				*g:spice_highlight_group*
+	ハイライトするグループ名を設定します。
+Default: >
+	let g:spice_highlight_group = "WarningMsg"
+<
+				*g:spice_highlight_group_in_cursorline*
+g:spice_highlight_group_in_cursorline
+	カーソル行の単語をハイライトするグループ名を設定します。
+	'cursorline' と併用して使用したい場合はこの設定を使用してください。
+Default: >
+	let g:spice_highlight_group_in_cursorline = ""
+<
+
+g:spice#enable_filetypes			*g:spice#enable_filetypes*
+	有効にする 'filetype' を設定します。
+	設定されていない 'filetype' は "_" の値を使用します。
+	デフォルトではすべての 'filetype' が有効です。
+Example: >
+	" filetype=cpp を無効にする
+	let g:spice#enable_filetypes = {
+	\	"cpp" : 0
+	\}
+
+	" filetype=vim のみを有効にする
+	let g:spice#enable_filetypes = {
+	\	"_"   : 0
+	\	"vim" : 1
+	\}
+<
+
+==============================================================================
+vim:tw=78:fo=tcq2mM:ts=8:ft=help:norl
