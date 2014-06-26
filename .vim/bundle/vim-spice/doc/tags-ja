@@ -1,0 +1,12 @@
+!_TAG_FILE_ENCODING	utf-8	//
+:SpiceDisable	spice.jax	/*:SpiceDisable*
+:SpiceEnable	spice.jax	/*:SpiceEnable*
+g:spice#enable_filetypes	spice.jax	/*g:spice#enable_filetypes*
+g:spice_highlight_group	spice.jax	/*g:spice_highlight_group*
+g:spice_highlight_group_in_cursorline	spice.jax	/*g:spice_highlight_group_in_cursorline*
+spice	spice.jax	/*spice*
+spice-commands	spice.jax	/*spice-commands*
+spice-interface	spice.jax	/*spice-interface*
+spice-introduction	spice.jax	/*spice-introduction*
+spice-setting	spice.jax	/*spice-setting*
+spice-variables	spice.jax	/*spice-variables*
