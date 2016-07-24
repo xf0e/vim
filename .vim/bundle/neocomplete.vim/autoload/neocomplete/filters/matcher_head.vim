@@ -26,7 +26,7 @@
 let s:save_cpo = &cpo
 set cpo&vim
 
-function! neocomplete#filters#matcher_head#define() "{{{
+function! neocomplete#filters#matcher_head#define() abort "{{{
   return s:matcher
 endfunction"}}}
 
@@ -35,13 +35,11 @@ let s:matcher = {
       \ 'description' : 'head matcher',
       \}
 
-function! s:matcher.filter(context) "{{{
-  let pattern = '^' . neocomplete#filters#escape(
-        \ a:context.complete_str)
-
+function! s:matcher.filter(context) abort "{{{
   lua << EOF
 do
-  local pattern = vim.eval('pattern')
+  local pattern = vim.eval(
+      "'^' . neocomplete#filters#escape(a:context.complete_str)")
   local input = vim.eval('a:context.complete_str')
   local candidates = vim.eval('a:context.candidates')
   if vim.eval('&ignorecase') ~= 0 then

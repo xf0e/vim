@@ -26,122 +26,8 @@
 let s:save_cpo = &cpo
 set cpo&vim
 
-function! neocomplete#complete#manual_complete(findstart, base) "{{{
-  let neocomplete = neocomplete#get_current_neocomplete()
-  let neocomplete.event = ''
-
-  if a:findstart
-    let cur_text = neocomplete#get_cur_text()
-    if !neocomplete#is_enabled()
-          \ || neocomplete#helper#is_omni(cur_text)
-      let &l:completefunc = 'neocomplete#complete#manual_complete'
-
-      return (neocomplete#is_prefetch()
-            \ || !neocomplete#is_auto_complete()
-            \ || g:neocomplete#enable_insert_char_pre) ?
-            \ -1 : -3
-    endif
-
-    " Get complete_pos.
-    if neocomplete#is_prefetch() &&
-          \ !empty(neocomplete.complete_sources)
-      " Use prefetch results.
-    else
-      let neocomplete.complete_sources =
-            \ neocomplete#complete#_get_results(cur_text)
-    endif
-    let complete_pos =
-          \ neocomplete#complete#_get_complete_pos(
-          \ neocomplete.complete_sources)
-
-    if complete_pos >= 0
-      " Pre gather candidates for skip completion.
-      let base = cur_text[complete_pos :]
-
-      let neocomplete.candidates = neocomplete#complete#_get_words(
-            \ neocomplete.complete_sources, complete_pos, base)
-      let neocomplete.complete_str = base
-
-      if empty(neocomplete.candidates)
-        " Nothing candidates.
-        let complete_pos = -1
-      endif
-    endif
-
-    if complete_pos < 0
-      let neocomplete = neocomplete#get_current_neocomplete()
-      let complete_pos = (neocomplete#is_prefetch() ||
-            \ g:neocomplete#enable_insert_char_pre ||
-            \ !neocomplete#is_auto_complete() ||
-            \ neocomplete#get_current_neocomplete().skipped) ?  -1 : -3
-      let neocomplete.skipped = 0
-      let neocomplete.overlapped_items = {}
-    endif
-
-    return complete_pos
-  else
-    if neocomplete.completeopt !=# &completeopt
-      " Restore completeopt.
-      let &completeopt = neocomplete.completeopt
-    endif
-
-    let dict = { 'words' : neocomplete.candidates }
-
-    if len(a:base) < g:neocomplete#auto_completion_start_length
-          \ || g:neocomplete#enable_refresh_always
-          \ || g:neocomplete#enable_cursor_hold_i
-      let dict.refresh = 'always'
-    endif
-
-    return dict
-  endif
-endfunction"}}}
-
-function! neocomplete#complete#sources_manual_complete(findstart, base) "{{{
-  let neocomplete = neocomplete#get_current_neocomplete()
-  let neocomplete.event = ''
-
-  if a:findstart
-    if !neocomplete#is_enabled()
-      return -2
-    endif
-
-    " Get complete_pos.
-    let complete_sources = neocomplete#complete#_get_results(
-          \ neocomplete#get_cur_text(1), neocomplete.manual_sources)
-    let neocomplete.complete_pos =
-          \ neocomplete#complete#_get_complete_pos(complete_sources)
-
-    if neocomplete.complete_pos < 0
-      return -2
-    endif
-
-    let neocomplete.complete_sources = complete_sources
-
-    return neocomplete.complete_pos
-  endif
-
-  let neocomplete.complete_pos =
-        \ neocomplete#complete#_get_complete_pos(
-        \     neocomplete.complete_sources)
-  let candidates = neocomplete#complete#_get_words(
-        \ neocomplete.complete_sources,
-        \ neocomplete.complete_pos, a:base)
-
-  let neocomplete.candidates = candidates
-  let neocomplete.complete_str = a:base
-
-  return candidates
-endfunction"}}}
-
-function! neocomplete#complete#auto_complete(findstart, base) "{{{
-  return neocomplete#complete#manual_complete(a:findstart, a:base)
-endfunction"}}}
-
-function! neocomplete#complete#_get_results(cur_text, ...) "{{{
-  if g:neocomplete#enable_debug
-    echomsg 'start get_complete_sources'
-  endif
+function! neocomplete#complete#_get_results(cur_text, ...) abort "{{{
+  call neocomplete#print_debug('start get_complete_sources')
 
   let neocomplete = neocomplete#get_current_neocomplete()
   let neocomplete.start_time = reltime()
@@ -152,13 +38,24 @@ function! neocomplete#complete#_get_results(cur_text, ...) "{{{
 
   let complete_sources = call(
         \ 'neocomplete#complete#_set_results_pos', [a:cur_text] + a:000)
+  if empty(complete_sources)
+    call neocomplete#print_debug('Skipped.')
+    return []
+  endif
+
+  if neocomplete#is_auto_complete()
+    let complete_pos =
+          \ neocomplete#complete#_get_complete_pos(complete_sources)
+    call neocomplete#complete#_set_previous_position(a:cur_text, complete_pos)
+  endif
+
   call neocomplete#complete#_set_results_words(complete_sources)
 
   return filter(copy(complete_sources),
         \ '!empty(v:val.neocomplete__context.candidates)')
 endfunction"}}}
 
-function! neocomplete#complete#_get_complete_pos(sources) "{{{
+function! neocomplete#complete#_get_complete_pos(sources) abort "{{{
   if empty(a:sources)
     return -1
   endif
@@ -167,7 +64,7 @@ function! neocomplete#complete#_get_complete_pos(sources) "{{{
         \ 'v:val.neocomplete__context.complete_pos'))
 endfunction"}}}
 
-function! neocomplete#complete#_get_words(sources, complete_pos, complete_str) "{{{
+function! neocomplete#complete#_get_words(sources, complete_pos, complete_str) abort "{{{
   let frequencies = neocomplete#variables#get_frequencies()
   if exists('*neocomplete#sources#buffer#get_frequencies')
     let frequencies = extend(copy(
@@ -178,14 +75,12 @@ function! neocomplete#complete#_get_words(sources, complete_pos, complete_str) "
   " Append prefix.
   let candidates = []
   let len_words = 0
-  for source in sort(filter(copy(a:sources),
+  for source in sort(filter(deepcopy(a:sources),
         \ '!empty(v:val.neocomplete__context.candidates)'),
         \  's:compare_source_rank')
-    let mark = source.mark
     let context = source.neocomplete__context
-    let words =
-          \ type(context.candidates[0]) == type('') ?
-          \ map(copy(context.candidates), "{'word': v:val, 'menu' : mark}") :
+    let words = type(context.candidates[0]) == type('') ?
+          \ map(copy(context.candidates), "{'word': v:val}") :
           \ deepcopy(context.candidates)
     let context.candidates = words
 
@@ -219,26 +114,25 @@ EOF
 
     let words = neocomplete#helper#call_filters(
           \ source.neocomplete__sorters, source, {})
+    if empty(words)
+      continue
+    endif
 
     if source.max_candidates > 0
       let words = words[: len(source.max_candidates)-1]
     endif
 
-    " Set default menu.
-    lua << EOF
-    do
-      local candidates = vim.eval('words')
-      local mark = vim.eval('mark')
-      for i = 0, #candidates-1 do
-        if candidates[i].menu == nil then
-          candidates[i].menu = mark
-        end
-      end
-    end
-EOF
-
     let words = neocomplete#helper#call_filters(
           \ source.neocomplete__converters, source, {})
+
+    if empty(words)
+      continue
+    endif
+
+    " Set default menu.
+    if get(words[0], 'menu', '') !~ '^\[.*\'
+      call s:set_default_menu(words, source)
+    endif
 
     let candidates += words
     let len_words += len(words)
@@ -253,15 +147,16 @@ EOF
     endif
   endfor
 
+  call filter(candidates, 'v:val.word !=# a:complete_str')
+
   if g:neocomplete#max_list > 0
     let candidates = candidates[: g:neocomplete#max_list]
   endif
 
   " Check dup and set icase.
-  let icase = !neocomplete#is_text_mode() && !neocomplete#within_comment() &&
-        \ g:neocomplete#enable_ignore_case &&
-        \!((g:neocomplete#enable_smart_case
-        \  || g:neocomplete#enable_camel_case) && a:complete_str =~ '\u')
+  let icase = g:neocomplete#enable_ignore_case &&
+        \ !((g:neocomplete#enable_smart_case
+        \    || g:neocomplete#enable_camel_case) && a:complete_str =~ '\u')
   if icase
     for candidate in candidates
       let candidate.icase = 1
@@ -274,7 +169,7 @@ EOF
 
   return candidates
 endfunction"}}}
-function! neocomplete#complete#_set_results_pos(cur_text, ...) "{{{
+function! neocomplete#complete#_set_results_pos(cur_text, ...) abort "{{{
   " Initialize sources.
   let neocomplete = neocomplete#get_current_neocomplete()
 
@@ -296,9 +191,12 @@ function! neocomplete#complete#_set_results_pos(cur_text, ...) "{{{
 
     let context = source.neocomplete__context
     let context.input = a:cur_text
+    let context.filetype = filetype
+    let context.filetypes = neocomplete#context_filetype#filetypes()
 
     try
-      let complete_pos =
+      let complete_pos = s:use_previous_result(source, context) ?
+            \ context.prev_complete_pos :
             \ has_key(source, 'get_complete_position') ?
             \ source.get_complete_position(context) :
             \ neocomplete#helper#match_word(context.input,
@@ -307,7 +205,7 @@ function! neocomplete#complete#_set_results_pos(cur_text, ...) "{{{
       call neocomplete#print_error(v:throwpoint)
       call neocomplete#print_error(v:exception)
       call neocomplete#print_error(
-            \ 'Error occured in source''s get_complete_position()!')
+            \ 'Error occurred in source''s get_complete_position()!')
       call neocomplete#print_error(
             \ 'Source name is ' . source.name)
       return complete_sources
@@ -325,6 +223,8 @@ function! neocomplete#complete#_set_results_pos(cur_text, ...) "{{{
 
     let complete_str = context.input[complete_pos :]
     if neocomplete#is_auto_complete() &&
+          \ (source.input_pattern == '' ||
+          \  context.input !~# '\%(' . source.input_pattern.'\m\)$') &&
           \ len(complete_str) < source.min_pattern_length
       " Skip.
       let context.complete_pos = -1
@@ -340,7 +240,7 @@ function! neocomplete#complete#_set_results_pos(cur_text, ...) "{{{
 
   return complete_sources
 endfunction"}}}
-function! neocomplete#complete#_set_results_words(sources) "{{{
+function! neocomplete#complete#_set_results_words(sources) abort "{{{
   " Try source completion.
 
   " Save options.
@@ -357,13 +257,12 @@ function! neocomplete#complete#_set_results_words(sources) "{{{
 
       let &ignorecase = (g:neocomplete#enable_smart_case
             \ || g:neocomplete#enable_camel_case) ?
-            \   context.complete_str !~ '\u' : g:neocomplete#enable_ignore_case
+            \   context.complete_str !~ '\u'
+            \ : g:neocomplete#enable_ignore_case
 
-      if !source.is_volatile
-            \ && context.prev_complete_pos == context.complete_pos
-            \ && !empty(context.prev_candidates)
+      if s:use_previous_result(source, context)
         " Use previous candidates.
-        let context.candidates = context.prev_candidates
+        let context.candidates = deepcopy(context.prev_candidates)
       else
         try
           let context.candidates = source.gather_candidates(context)
@@ -373,7 +272,7 @@ function! neocomplete#complete#_set_results_words(sources) "{{{
           call neocomplete#print_error(
                 \ 'Source name is ' . source.name)
           call neocomplete#print_error(
-                \ 'Error occured in source''s gather_candidates()!')
+                \ 'Error occurred in source''s gather_candidates()!')
 
           return
         finally
@@ -381,28 +280,66 @@ function! neocomplete#complete#_set_results_words(sources) "{{{
             call winrestview(pos)
           endif
         endtry
-      endif
 
-      let context.prev_candidates = copy(context.candidates)
-      let context.prev_complete_pos = context.complete_pos
+        let context.prev_line = context.input
+        let context.prev_candidates = copy(context.candidates)
+        let context.prev_complete_pos = context.complete_pos
+      endif
 
       if !empty(context.candidates)
+        let matchers = empty(source.neocomplete__matchers) ?
+              \   neocomplete#get_current_neocomplete().default_matchers
+              \ : source.neocomplete__matchers
         let context.candidates = neocomplete#helper#call_filters(
-              \ source.neocomplete__matchers, source, {})
+              \ matchers, source, {})
       endif
 
-      if g:neocomplete#enable_debug
-        echomsg source.name
-      endif
+      call neocomplete#print_debug(source.name)
     endfor
   finally
     let &ignorecase = ignorecase_save
   endtry
 endfunction"}}}
 
+function! neocomplete#complete#_check_previous_position(cur_text, complete_pos) abort "{{{
+  let neocomplete = neocomplete#get_current_neocomplete()
+  return a:complete_pos == neocomplete.old_complete_pos
+        \ && line('.') == neocomplete.old_linenr
+        \ && a:cur_text ==# neocomplete.old_cur_text
+endfunction"}}}
+function! neocomplete#complete#_set_previous_position(cur_text, complete_pos) abort "{{{
+  let neocomplete = neocomplete#get_current_neocomplete()
+  let neocomplete.old_complete_pos = a:complete_pos
+  let neocomplete.old_linenr = line('.')
+  let neocomplete.old_cur_text = a:cur_text
+endfunction"}}}
+
 " Source rank order. "{{{
-function! s:compare_source_rank(i1, i2)
+function! s:compare_source_rank(i1, i2) abort
   return a:i2.rank - a:i1.rank
+endfunction"}}}
+
+function! s:set_default_menu(words, source) abort "{{{
+  lua << EOF
+  do
+    local candidates = vim.eval('a:words')
+    local mark = vim.eval('a:source.mark') .. ' '
+    for i = 0, #candidates-1 do
+      candidates[i].menu = mark .. (candidates[i].menu ~= nil and
+                           candidates[i].menu or '')
+    end
+  end
+EOF
+endfunction"}}}
+
+function! s:use_previous_result(source, context) abort "{{{
+  let neocomplete = neocomplete#get_current_neocomplete()
+  return !a:source.is_volatile
+        \ && substitute(a:context.input, '\k\+$', '', '')
+        \    ==# substitute(a:context.prev_line, '\k\+$', '', '')
+        \ && stridx(a:context.input, a:context.prev_line) == 0
+        \ && !empty(a:context.prev_candidates)
+        \ && line('.') == neocomplete.old_linenr
 endfunction"}}}
 
 let &cpo = s:save_cpo

@@ -15,6 +15,7 @@ try:
 except ImportError:
     from itertools import izip_longest as zip_longest  # Python 2
 
+import vim
 
 is_py3 = sys.version_info[0] >= 3
 if is_py3:
@@ -62,36 +63,34 @@ def _catch_exception(string, is_eval):
     Interface between vim and python calls back to it.
     Necessary, because the exact error message is not given by `vim.error`.
     """
-    e = 'jedi#_vim_exceptions(%s, %s)'
-    result = vim.eval(e % (repr(PythonToVimStr(string, 'UTF-8')), is_eval))
+    result = vim.eval('jedi#_vim_exceptions({0}, {1})'.format(
+        repr(PythonToVimStr(string, 'UTF-8')), int(is_eval)))
     if 'exception' in result:
         raise VimError(result['exception'], result['throwpoint'], string)
     return result['result']
 
 
 def vim_command(string):
-    _catch_exception(string, 0)
+    _catch_exception(string, False)
 
 
 def vim_eval(string):
-    return _catch_exception(string, 1)
+    return _catch_exception(string, True)
 
 
 def no_jedi_warning(error=None):
-    msg = "Please install Jedi if you want to use jedi-vim."
+    vim.command('echohl WarningMsg')
+    vim.command('echom "Please install Jedi if you want to use jedi-vim."')
     if error:
-        msg = '{} The error was: {}'.format(msg, error)
-    vim.command('echohl WarningMsg'
-                '| echom "Please install Jedi if you want to use jedi-vim."'
-                '| echohl None')
+        vim.command('echom "The error was: {0}"'.format(error))
+    vim.command('echohl None')
 
 
 def echo_highlight(msg):
-    vim_command('echohl WarningMsg | echom "{}" | echohl None'.format(
+    vim_command('echohl WarningMsg | echom "{0}" | echohl None'.format(
         msg.replace('"', '\\"')))
 
 
-import vim
 try:
     import jedi
 except ImportError as e:
@@ -101,7 +100,7 @@ else:
     try:
         version = jedi.__version__
     except Exception as e:  # e.g. AttributeError
-        echo_highlight("Could not load jedi python module: {}".format(e))
+        echo_highlight("Could not load jedi python module: {0}".format(e))
         jedi = None
     else:
         if isinstance(version, str):
@@ -155,7 +154,7 @@ def completions():
     row, column = vim.current.window.cursor
     # Clear call signatures in the buffer so they aren't seen by the completer.
     # Call signatures in the command line can stay.
-    if vim_eval("g:jedi#show_call_signatures") == '1':
+    if int(vim_eval("g:jedi#show_call_signatures")) == 1:
         clear_call_signatures()
     if vim.eval('a:findstart') == '1':
         count = 0
@@ -184,7 +183,7 @@ def completions():
             out = []
             for c in completions:
                 d = dict(word=PythonToVimStr(c.name[:len(base)] + c.complete),
-                         abbr=PythonToVimStr(c.name),
+                         abbr=PythonToVimStr(c.name_with_symbols),
                          # stuff directly behind the completion
                          menu=PythonToVimStr(c.description),
                          info=PythonToVimStr(c.docstring()),  # docstr
@@ -259,7 +258,7 @@ def goto(mode="goto", no_output=False):
                     echo_highlight("Builtin modules cannot be displayed (%s)."
                                    % d.desc_with_module)
             else:
-                using_tagstack = vim_eval('g:jedi#use_tag_stack') == '1'
+                using_tagstack = int(vim_eval('g:jedi#use_tag_stack')) == 1
                 if d.module_path != vim.current.buffer.name:
                     result = new_buffer(d.module_path,
                                         using_tagstack=using_tagstack)
@@ -327,7 +326,7 @@ def show_documentation():
 @catch_and_print_exceptions
 def clear_call_signatures():
     # Check if using command line call signatures
-    if vim_eval("g:jedi#show_call_signatures") == '2':
+    if int(vim_eval("g:jedi#show_call_signatures")) == 2:
         vim_command('echo ""')
         return
     cursor = vim.current.window.cursor
@@ -352,7 +351,7 @@ def clear_call_signatures():
 @_check_jedi_availability(show_error=False)
 @catch_and_print_exceptions
 def show_call_signatures(signatures=()):
-    if vim_eval("has('conceal') && g:jedi#show_call_signatures") == '0':
+    if int(vim_eval("has('conceal') && g:jedi#show_call_signatures")) == 0:
         return
 
     if signatures == ():
@@ -362,7 +361,7 @@ def show_call_signatures(signatures=()):
     if not signatures:
         return
 
-    if vim_eval("g:jedi#show_call_signatures") == '2':
+    if int(vim_eval("g:jedi#show_call_signatures")) == 2:
         return cmdline_call_signatures(signatures)
 
     for i, signature in enumerate(signatures):
@@ -508,8 +507,12 @@ def cmdline_call_signatures(signatures):
 @catch_and_print_exceptions
 def rename():
     if not int(vim.eval('a:0')):
+        # Need to save the cursor position before insert mode
+        cursor = vim.current.window.cursor
+        changenr = vim.eval('changenr()') # track undo tree
         vim_command('augroup jedi_rename')
-        vim_command('autocmd InsertLeave <buffer> call jedi#rename(1)')
+        vim_command('autocmd InsertLeave <buffer> call jedi#rename'
+                '({}, {}, {})'.format(cursor[0], cursor[1], changenr))
         vim_command('augroup END')
 
         vim_command("let s:jedi_replace_orig = expand('<cword>')")
@@ -521,6 +524,10 @@ def rename():
         # Remove autocommand.
         vim_command('autocmd! jedi_rename InsertLeave')
 
+        args = vim.eval('a:000')
+        cursor = tuple(int(x) for x in args[:2])
+        changenr = args[2]
+
         # Get replacement, if there is something on the cursor.
         # This won't be the case when the user ends insert mode right away,
         # and `<cword>` would pick up the nearest word instead.
@@ -529,13 +536,7 @@ def rename():
         else:
             replace = None
 
-        cursor = vim.current.window.cursor
-
-        # Undo new word, but only if something was changed, which is not the
-        # case when ending insert mode right away.
-        if vim_eval('b:changedtick != s:jedi_changedtick') == '1':
-            vim_command('normal! u')  # Undo new word.
-        vim_command('normal! u')  # Undo diw.
+        vim_command('undo {}'.format(changenr))
 
         vim.current.window.cursor = cursor
 
@@ -574,7 +575,7 @@ def do_rename(replace, orig=None):
         if os.path.abspath(vim.current.buffer.name) != r.module_path:
             result = new_buffer(r.module_path)
             if not result:
-                echo_highlight("Jedi-vim: failed to create buffer window for {}!".format(r.module_path))
+                echo_highlight("Jedi-vim: failed to create buffer window for {0}!".format(r.module_path))
                 continue
 
         buffers.add(vim.current.buffer.name)
@@ -584,20 +585,20 @@ def do_rename(replace, orig=None):
 
         # Replace original word.
         vim.current.window.cursor = r.start_pos
-        vim_command('normal! c{:d}l{}'.format(len(orig), replace))
+        vim_command('normal! c{0:d}l{1}'.format(len(orig), replace))
 
         # Restore view.
         vim_command('call winrestview(%s)' % saved_view)
 
     # Restore previous tab and window.
-    vim_command('tabnext {:d}'.format(saved_tab))
-    vim_command('{:d}wincmd w'.format(saved_win))
+    vim_command('tabnext {0:d}'.format(saved_tab))
+    vim_command('{0:d}wincmd w'.format(saved_win))
 
     if len(buffers) > 1:
-        echo_highlight('Jedi did {:d} renames in {:d} buffers!'.format(
+        echo_highlight('Jedi did {0:d} renames in {1:d} buffers!'.format(
             len(temp_rename), len(buffers)))
     else:
-        echo_highlight('Jedi did {:d} renames!'.format(len(temp_rename)))
+        echo_highlight('Jedi did {0:d} renames!'.format(len(temp_rename)))
 
 
 @_check_jedi_availability(show_error=True)
@@ -638,9 +639,9 @@ def py_import_completions():
 @catch_and_print_exceptions
 def new_buffer(path, options='', using_tagstack=False):
     # options are what you can to edit the edit options
-    if vim_eval('g:jedi#use_tabs_not_buffers') == '1':
+    if int(vim_eval('g:jedi#use_tabs_not_buffers')) == 1:
         _tabnew(path, options)
-    elif not vim_eval('g:jedi#use_splits_not_buffers') == '1':
+    elif not vim_eval('g:jedi#use_splits_not_buffers') in [1, '1']:
         user_split_option = vim_eval('g:jedi#use_splits_not_buffers')
         split_options = {
             'top': 'topleft split',
@@ -649,14 +650,18 @@ def new_buffer(path, options='', using_tagstack=False):
             'bottom': 'botright split',
             'winwidth': 'vs'
         }
-        if user_split_option == 'winwidth' and vim.current.window.width <= 2 * int(vim_eval("&textwidth ? &textwidth : 80")):
+        if (user_split_option == 'winwidth' and
+                vim.current.window.width <= 2 * int(vim_eval(
+                    "&textwidth ? &textwidth : 80"))):
             split_options['winwidth'] = 'sp'
         if user_split_option not in split_options:
-            print('g:jedi#use_splits_not_buffers value is not correct, valid options are: %s' % ','.join(split_options.keys()))
+            print('Unsupported value for g:jedi#use_splits_not_buffers: {0}. '
+                  'Valid options are: {1}.'.format(
+                      user_split_option, ', '.join(split_options.keys())))
         else:
             vim_command(split_options[user_split_option] + " %s" % escape_file_path(path))
     else:
-        if vim_eval("!&hidden && &modified") == '1':
+        if int(vim_eval("!&hidden && &modified")) == 1:
             if vim_eval("bufname('%')") is None:
                 echo_highlight('Cannot open a new buffer, use `:set hidden` or save your buffer')
                 return False
@@ -666,9 +671,9 @@ def new_buffer(path, options='', using_tagstack=False):
             return True
         vim_command('edit %s %s' % (options, escape_file_path(path)))
     # sometimes syntax is being disabled and the filetype not set.
-    if vim_eval('!exists("g:syntax_on")') == '1':
+    if int(vim_eval('!exists("g:syntax_on")')) == 1:
         vim_command('syntax enable')
-    if vim_eval("&filetype != 'python'") == '1':
+    if int(vim_eval("&filetype != 'python'")) == 1:
         vim_command('set filetype=python')
     return True
 
@@ -681,7 +686,7 @@ def _tabnew(path, options=''):
     :param options: `:tabnew` options, read vim help.
     """
     path = os.path.abspath(path)
-    if vim_eval('has("gui")') == '1':
+    if int(vim_eval('has("gui")')) == 1:
         vim_command('tab drop %s %s' % (options, escape_file_path(path)))
         return
 

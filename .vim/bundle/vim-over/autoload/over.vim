@@ -3,6 +3,9 @@ let s:save_cpo = &cpo
 set cpo&vim
 
 
+let g:over#debug_vital_over = get(g:, "over#debug_vital_over", 0)
+
+
 function! over#load()
 	call over#command_line#load()
 endfunction
@@ -12,12 +15,16 @@ function! over#vital()
 	if exists("s:V")
 		return s:V
 	endif
-	let s:V = vital#of("over")
+	if g:over#debug_vital_over
+		let s:V = vital#of("vital")
+	else
+		let s:V = vital#of("over")
+	endif
 	return s:V
 endfunction
 
 function! over#revital()
-	call vital#of("over").unload()
+	call s:V.unload()
 	unlet! s:V
 	call over#vital()
 endfunction
@@ -110,6 +117,13 @@ function! s:set_options()
 endfunction
 
 
+
+nnoremap <silent><expr> <Plug>(over-restore-search-pattern)
+\	(mode() =~ '[iR]' ? "\<C-o>" : "") . ":let @/ = " . string(s:old_search_pattern) . "\<CR>"
+
+nnoremap <silent><expr> <Plug>(over-restore-nohlsearch)
+\	(mode() =~ '[iR]' ? "\<C-o>" : "") . ":nohlsearch\<CR>"
+
 function! s:restore_options()
 	if s:search_highlighted || s:set_flag == 0
 		return
@@ -120,8 +134,10 @@ function! s:restore_options()
 	let &hlsearch  = s:old_hlsearch
 	if g:over_enable_auto_nohlsearch
 		call s:silent_feedkeys(":nohlsearch\<CR>", "nohlsearch", 'n')
+		call feedkeys("\<Plug>(over-restore-nohlsearch)")
 	endif
-	call s:silent_feedkeys(":let @/ = " . string(s:old_search_pattern) . "\<CR>", "restore-search-pattern", 'n')
+	execute "normal \<Plug>(over-restore-search-pattern)"
+" 	call s:silent_feedkeys(":let @/ = " . string(s:old_search_pattern) . "\<CR>", "restore-search-pattern", 'n')
 endfunction
 
 
@@ -144,8 +160,9 @@ function! over#unsetup()
 endfunction
 
 
-function! over#command_line(prompt, input)
-	return over#command_line#start(a:prompt, a:input)
+function! over#command_line(prompt, input, ...)
+	let context = get(a:, 1, {})
+	return over#command_line#start(a:prompt, a:input, context)
 endfunction
 
 

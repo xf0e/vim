@@ -26,7 +26,7 @@
 let s:save_cpo = &cpo
 set cpo&vim
 
-function! s:main(argv) "{{{
+function! s:main(argv) abort "{{{
   " args: funcname, outputname filename pattern_file_name mark minlen fileencoding
   let [funcname, outputname, filename, pattern_file_name, mark, minlen, fileencoding]
         \ = a:argv
@@ -51,32 +51,35 @@ function! s:main(argv) "{{{
   call writefile([string], outputname)
 endfunction"}}}
 
-function! s:load_from_file(filename, pattern_file_name, mark, minlen, fileencoding, is_string) "{{{
+function! s:load_from_file(filename, pattern_file_name, mark, minlen, fileencoding, is_string) abort "{{{
   if !filereadable(a:filename)
     " File not found.
     return []
   endif
 
-  let lines = map(readfile(a:filename),
-        \ 's:iconv(v:val, a:fileencoding, &encoding)')
+  let lines = readfile(a:filename)
+  if a:fileencoding !=# &encoding
+    let lines = map(lines, 's:iconv(v:val, a:fileencoding, &encoding)')
+  endif
 
   let pattern = get(readfile(a:pattern_file_name), 0, '\h\w*')
-
+  let pattern2 = '^\%('.pattern.'\m\)'
   let keyword_list = []
   let dup_check = {}
-  let keyword_pattern2 = '^\%('.pattern.'\m\)'
 
   for line in lines "{{{
     let match = match(line, pattern)
     while match >= 0 "{{{
-      let match_str = matchstr(line, keyword_pattern2, match)
+      let match_str = matchstr(line, pattern2, match)
 
       if !has_key(dup_check, match_str) && len(match_str) >= a:minlen
         " Append list.
-        call add(keyword_list, (a:is_string ?
-              \ match_str : { 'word' : match_str }))
-
+        call add(keyword_list, match_str)
         let dup_check[match_str] = 1
+      endif
+
+      if match_str == ''
+        break
       endif
 
       let match += len(match_str)
@@ -85,15 +88,19 @@ function! s:load_from_file(filename, pattern_file_name, mark, minlen, fileencodi
     endwhile"}}}
   endfor"}}}
 
+  if !a:is_string
+    call map(keyword_list, "{'word' : match_str}")
+  endif
+
   return keyword_list
 endfunction"}}}
 
-function! s:load_from_tags(filename, pattern_file_name, mark, minlen, fileencoding) "{{{
+function! s:load_from_tags(filename, pattern_file_name, mark, minlen, fileencoding) abort "{{{
   let keyword_lists = []
   let dup_check = {}
 
-  let [pattern, tags_file_name, filter_pattern, filetype] =
-        \ readfile(a:pattern_file_name)[: 4]
+  let [tags_file_name, filter_pattern] =
+        \ readfile(a:pattern_file_name)[1 : 2]
   if tags_file_name !=# '$dummy$'
     " Check output.
     let tags_list = []
@@ -125,7 +132,7 @@ function! s:load_from_tags(filename, pattern_file_name, mark, minlen, fileencodi
           \ a:mark, a:minlen, a:fileencoding, 0)
   endif
 
-  for line in tags_list "{{{
+  for line in tags_list
     let tag = split(substitute(line, "\<CR>", '', 'g'), '\t', 1)
 
     " Add keywords.
@@ -180,7 +187,7 @@ function! s:load_from_tags(filename, pattern_file_name, mark, minlen, fileencodi
     let abbr = substitute(abbr, '"\s*{{{', '', '')
 
     let keyword = {
-          \ 'word' : tag[0], 'abbr' : abbr, 'menu' : a:mark,
+          \ 'word' : tag[0], 'abbr' : abbr, 'menu' : '',
           \ 'kind' : option['kind'],
           \ }
     if has_key(option, 'struct')
@@ -204,7 +211,7 @@ function! s:load_from_tags(filename, pattern_file_name, mark, minlen, fileencodi
   return keyword_lists
 endfunction"}}}
 
-function! s:truncate(str, width) "{{{
+function! s:truncate(str, width) abort "{{{
   " Original function is from mattn.
   " http://github.com/mattn/googlereader-vim/tree/master
 
@@ -214,10 +221,10 @@ function! s:truncate(str, width) "{{{
   endif
 
   let ret = a:str
-  let width = s:wcswidth(a:str)
+  let width = strdisplaywidth(a:str)
   if width > a:width
     let ret = s:strwidthpart(ret, a:width)
-    let width = s:wcswidth(ret)
+    let width = strdisplaywidth(ret)
   endif
 
   if width < a:width
@@ -227,33 +234,25 @@ function! s:truncate(str, width) "{{{
   return ret
 endfunction"}}}
 
-function! s:strwidthpart(str, width) "{{{
+function! s:strwidthpart(str, width) abort "{{{
   let ret = a:str
-  let width = s:wcswidth(a:str)
+  let width = strdisplaywidth(a:str)
   while width > a:width
     let char = matchstr(ret, '.$')
     let ret = ret[: -1 - len(char)]
-    let width -= s:wcwidth(char)
+    let width -= strwidth(char)
   endwhile
 
   return ret
 endfunction"}}}
 
-function! s:iconv(expr, from, to)
+function! s:iconv(expr, from, to) abort
   if a:from == '' || a:to == '' || a:from ==? a:to
     return a:expr
   endif
   let result = iconv(a:expr, a:from, a:to)
   return result != '' ? result : a:expr
 endfunction
-
-" Use builtin function.
-function! s:wcswidth(str) "{{{
-  return strdisplaywidth(a:str)
-endfunction"}}}
-function! s:wcwidth(str) "{{{
-  return strwidth(a:str)
-endfunction"}}}
 
 if argc() == 7 &&
       \ (argv(0) ==# 'load_from_file' || argv(0) ==# 'load_from_tags')
@@ -266,7 +265,7 @@ if argc() == 7 &&
 
   qall!
 else
-  function! neocomplete#async_cache#main(argv) "{{{
+  function! neocomplete#async_cache#main(argv) abort "{{{
     call s:main(a:argv)
   endfunction"}}}
 endif

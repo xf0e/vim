@@ -1,9 +1,8 @@
 " vim: et sw=2 sts=2
 
 " Plugin:      https://github.com/mhinz/vim-startify
-" Description: Start screen displaying recently used stuff.
+" Description: A fancy start screen for Vim.
 " Maintainer:  Marco Hinz <http://github.com/mhinz>
-" Version:     1.8
 
 if exists("b:current_syntax")
   finish
@@ -13,28 +12,43 @@ let s:sep = startify#get_separator()
 
 syntax sync fromstart
 
+syntax match StartifyBracket /.*\%9c/ contains=
+      \ StartifyNumber,
+      \ StartifySelect,
 syntax match StartifySpecial /\V<empty buffer>\|<quit>/
-syntax match StartifyBracket /\[\|\]/
-syntax match StartifyNumber  /\[[^BSV]\+\]/hs=s+1,he=e-1 contains=StartifyBracket
-syntax match StartifyFile    /.*/ contains=StartifyBracket,StartifyNumber,StartifyPath,StartifySpecial
+syntax match StartifyNumber  /^\s*\[\zs[^BSVT]\{-}\ze\]/
+syntax match StartifySelect  /^\s*\[\zs[BSVT]\{-}\ze\]/
+syntax match StartifyVar     /\$[^\/]\+/
+syntax match StartifyFile    /.*/ contains=
+      \ StartifyBracket,
+      \ StartifyPath,
+      \ StartifySpecial,
 
 execute 'syntax match StartifySlash /\'. s:sep .'/'
-execute 'syntax match StartifyPath /\%9c.*\'. s:sep .'/ contains=StartifySlash'
+execute 'syntax match StartifyPath /\%9c.*\'. s:sep .'/ contains=StartifySlash,StartifyVar'
 
-if exists('g:startify_custom_header')
-  execute 'syntax region StartifyHeader start=/\%1l/ end=/\%'. (len(g:startify_custom_header) + 2) .'l/'
-endif
+execute 'syntax region StartifyHeader start=/\%1l/ end=/\%'. (len(g:startify_header) + 2) .'l/'
 
 if exists('g:startify_custom_footer')
-  autocmd startify User Startified
-        \ execute 'syntax region StartifyFooter start=/\%'. (startify#get_lastline() + 1) .'l/ end=/*/' |
-        \ autocmd! startify User
+  execute 'syntax region StartifyFooter start=/\%'. startify#get_lastline() .'l/ end=/*/'
 endif
 
-highlight default link StartifyHeader  Normal
-highlight default link StartifyFooter  Normal
+if exists('b:startify_section_header_lines')
+  for line in b:startify_section_header_lines
+    execute 'syntax region StartifySection start=/\%'. line .'l/ end=/$/'
+  endfor
+endif
+
 highlight default link StartifyBracket Delimiter
+highlight default link StartifyFile    Identifier
+highlight default link StartifyFooter  Title
+highlight default link StartifyHeader  Title
 highlight default link StartifyNumber  Number
-highlight default link StartifySection Special
+highlight default link StartifyPath    Directory
+highlight default link StartifySection Statement
+highlight default link StartifySelect  Title
+highlight default link StartifySlash   Delimiter
+highlight default link StartifySpecial Comment
+highlight default link StartifyVar     StartifyPath
 
 let b:current_syntax = 'startify'

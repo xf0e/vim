@@ -31,12 +31,6 @@ let g:loaded_neocomplete = 1
 let s:save_cpo = &cpo
 set cpo&vim
 
-if !( has('lua') && (v:version > 703 || v:version == 703 && has('patch885')) )
-  echomsg 'neocomplete does not work this version of Vim.'
-  echomsg 'It requires Vim 7.3.885 or above and "if_lua" enabled Vim.'
-  finish
-endif
-
 command! -nargs=0 -bar NeoCompleteEnable
       \ call neocomplete#init#enable()
 command! -nargs=0 -bar NeoCompleteDisable
@@ -58,7 +52,7 @@ let g:neocomplete#enable_debug =
 if get(g:, 'neocomplete#enable_at_startup', 0)
   augroup neocomplete
     " Enable startup.
-    autocmd CursorHold,CursorMovedI
+    autocmd CursorHold,InsertEnter
           \ * call neocomplete#init#enable()
   augroup END
 endif"}}}

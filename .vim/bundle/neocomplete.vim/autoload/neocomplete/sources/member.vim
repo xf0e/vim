@@ -45,18 +45,24 @@ let s:source = {
       \ 'rank' : 5,
       \ 'min_pattern_length' : 0,
       \ 'hooks' : {},
+      \ 'is_volatile' : 1,
       \}
 
-function! s:source.hooks.on_init(context) "{{{
+function! s:source.hooks.on_init(context) abort "{{{
   augroup neocomplete "{{{
     " Make cache events
     autocmd CursorHold * call s:make_cache_current_buffer(
           \ line('.')-10, line('.')+10)
     autocmd InsertEnter,InsertLeave *
           \ call neocomplete#sources#member#make_cache_current_line()
+    autocmd FileType *
+          \ call neocomplete#sources#member#remake_cache(&l:filetype)
   augroup END"}}}
 
   " Initialize member prefix patterns. "{{{
+  call neocomplete#util#set_default_dictionary(
+        \ 'g:neocomplete#sources#member#prefix_patterns',
+        \ '_', '\.')
   call neocomplete#util#set_default_dictionary(
         \ 'g:neocomplete#sources#member#prefix_patterns',
         \ 'c,objc', '\.\|->')
@@ -68,7 +74,7 @@ function! s:source.hooks.on_init(context) "{{{
         \ 'perl,php', '->')
   call neocomplete#util#set_default_dictionary(
         \ 'g:neocomplete#sources#member#prefix_patterns',
-        \ 'cs,java,javascript,d,vim,ruby,python,perl6,scala,vb', '\.')
+        \ 'ruby', '\.\|::')
   call neocomplete#util#set_default_dictionary(
         \ 'g:neocomplete#sources#member#prefix_patterns',
         \ 'lua', '\.\|:')
@@ -77,7 +83,7 @@ function! s:source.hooks.on_init(context) "{{{
   " Initialize member patterns. "{{{
   call neocomplete#util#set_default_dictionary(
         \ 'g:neocomplete#sources#member#input_patterns',
-        \ '_', '\h\w*\%(()\|\[\h\w*\]\)\?')
+        \ '_', '\h\w*\%(()\?\|\[\h\w*\]\)\?')
   "}}}
 
   " Initialize script variables. "{{{
@@ -86,158 +92,183 @@ function! s:source.hooks.on_init(context) "{{{
 endfunction
 "}}}
 
-function! s:source.get_complete_position(context) "{{{
+function! s:source.get_complete_position(context) abort "{{{
   " Check member prefix pattern.
-  let filetype = neocomplete#get_context_filetype()
-  if !has_key(g:neocomplete#sources#member#prefix_patterns, filetype)
-        \ || g:neocomplete#sources#member#prefix_patterns[filetype] == ''
+  let filetype = a:context.filetype
+  let prefix = get(g:neocomplete#sources#member#prefix_patterns, filetype,
+        \ get(g:neocomplete#sources#member#prefix_patterns, '_', ''))
+  if prefix == ''
     return -1
   endif
 
   let member = s:get_member_pattern(filetype)
-  let prefix = g:neocomplete#sources#member#prefix_patterns[filetype]
   let complete_pos = matchend(a:context.input,
-        \ '\%(' . member . '\%(' . prefix . '\m\)\)\+\ze\w*$')
+        \ member . '\m\%(' . prefix . '\m\)\ze\w*$')
   return complete_pos
 endfunction"}}}
 
-function! s:source.gather_candidates(context) "{{{
+function! s:source.gather_candidates(context) abort "{{{
   " Check member prefix pattern.
-  let filetype = neocomplete#get_context_filetype()
-  if !has_key(g:neocomplete#sources#member#prefix_patterns, filetype)
-        \ || g:neocomplete#sources#member#prefix_patterns[filetype] == ''
+  let filetype = a:context.filetype
+  let prefix = get(g:neocomplete#sources#member#prefix_patterns, filetype,
+        \ get(g:neocomplete#sources#member#prefix_patterns, '_', ''))
+  if prefix == ''
     return []
   endif
 
+  call neocomplete#sources#member#remake_cache(filetype)
+
   let var_name = matchstr(a:context.input,
-        \ '\%(' . s:get_member_pattern(filetype) . '\%(' .
-        \ g:neocomplete#sources#member#prefix_patterns[filetype] . '\m\)\)\+\ze\w*$')
+        \ s:get_member_pattern(filetype) . '\m\%(' .
+        \ prefix . '\m\)\ze\w*$')
   if var_name == ''
     return []
   endif
 
-  return s:get_member_list(a:context.input, var_name)
+  return s:get_member_list(a:context, a:context.input, var_name)
 endfunction"}}}
 
-function! neocomplete#sources#member#define() "{{{
+function! neocomplete#sources#member#define() abort "{{{
   return s:source
 endfunction"}}}
 
-function! neocomplete#sources#member#make_cache_current_line() "{{{
+function! neocomplete#sources#member#make_cache_current_line() abort "{{{
+  if !neocomplete#is_enabled()
+    call neocomplete#initialize()
+  endif
+
   " Make cache from current line.
   return s:make_cache_current_buffer(line('.')-1, line('.')+1)
 endfunction"}}}
-function! neocomplete#sources#member#make_cache_current_buffer() "{{{
+function! neocomplete#sources#member#make_cache_current_buffer() abort "{{{
+  if !neocomplete#is_enabled()
+    call neocomplete#initialize()
+  endif
+
   " Make cache from current buffer.
   return s:make_cache_current_buffer(1, line('$'))
 endfunction"}}}
-function! s:make_cache_current_buffer(start, end) "{{{
-  if !exists('g:neocomplete#sources#member#prefix_patterns')
-    return
-  endif
+function! s:make_cache_current_buffer(start, end) abort "{{{
+  let filetype = neocomplete#get_context_filetype(1)
 
   if !has_key(s:member_sources, bufnr('%'))
-    call s:initialize_source(bufnr('%'))
+    call s:initialize_source(bufnr('%'), filetype)
   endif
 
-  let filetype = neocomplete#get_context_filetype(1)
-  if !has_key(g:neocomplete#sources#member#prefix_patterns, filetype)
-        \ || g:neocomplete#sources#member#prefix_patterns[filetype] == ''
+  call s:make_cache_lines(bufnr('%'), filetype, getline(a:start, a:end))
+endfunction"}}}
+function! s:make_cache_lines(srcname, filetype, lines) abort "{{{
+  let filetype = a:filetype
+  if !has_key(s:member_sources, a:srcname)
+    call s:initialize_source(a:srcname, filetype)
+  endif
+
+  let prefix = get(g:neocomplete#sources#member#prefix_patterns, filetype,
+        \ get(g:neocomplete#sources#member#prefix_patterns, '_', ''))
+  if prefix == ''
     return
   endif
-
-  let source = s:member_sources[bufnr('%')]
+  let source = s:member_sources[a:srcname]
+  let member_pattern = s:get_member_pattern(filetype)
+  let prefix_pattern = member_pattern . '\m\%(' . prefix . '\m\)'
   let keyword_pattern =
-        \ '\%(' . s:get_member_pattern(filetype) . '\%('
-        \ . g:neocomplete#sources#member#prefix_patterns[filetype]
-        \ . '\m\)\)\+' . s:get_member_pattern(filetype)
-  let keyword_pattern2 = '^'.keyword_pattern
-  let member_pattern = s:get_member_pattern(filetype) . '$'
+        \ prefix_pattern . member_pattern
 
   " Cache member pattern.
-  for line in getline(a:start, a:end)
+  for line in a:lines
     let match = match(line, keyword_pattern)
 
     while match >= 0 "{{{
-      let match_str = matchstr(line, keyword_pattern2, match)
+      let match_str = matchstr(line, '^'.keyword_pattern, match)
 
       " Next match.
-      let match = matchend(line, keyword_pattern, match + len(match_str))
+      let match = matchend(line, prefix_pattern, match)
 
-      while match_str != ''
-        let member_name = matchstr(match_str, member_pattern)
-        if member_name == ''
-          break
-        endif
-        let var_name = match_str[ : -len(member_name)-1]
+      let member_name = matchstr(match_str, member_pattern . '$')
+      if member_name == ''
+        continue
+      endif
+      let var_name = match_str[ : -len(member_name)-1]
 
-        if !has_key(source.member_cache, var_name)
-          let source.member_cache[var_name] = {}
-        endif
-        if !has_key(source.member_cache[var_name], member_name)
-          let source.member_cache[var_name][member_name] = member_name
-        endif
+      if !has_key(source.member_cache, var_name)
+        let source.member_cache[var_name] = {}
+      endif
+      if !has_key(source.member_cache[var_name], member_name)
+        let source.member_cache[var_name][member_name] = 1
+      endif
 
-        let match_str = matchstr(var_name, keyword_pattern2)
-      endwhile
+      let match_str = matchstr(var_name, '^'.keyword_pattern)
     endwhile"}}}
   endfor
 endfunction"}}}
 
-function! s:get_member_list(cur_text, var_name) "{{{
+function! s:get_member_list(context, cur_text, var_name) abort "{{{
   let keyword_list = []
-  for [key, source] in filter(s:get_sources_list(),
-        \ 'has_key(v:val[1].member_cache, a:var_name)')
+  for source in filter(s:get_sources_list(a:context),
+        \ 'has_key(v:val.member_cache, a:var_name)')
     let keyword_list +=
-          \ values(source.member_cache[a:var_name])
+          \ keys(source.member_cache[a:var_name])
   endfor
 
   return keyword_list
 endfunction"}}}
 
-function! s:get_sources_list() "{{{
-  let sources_list = []
-
+function! s:get_sources_list(context) abort "{{{
   let filetypes_dict = {}
-  for filetype in neocomplete#get_source_filetypes(
-        \ neocomplete#get_context_filetype())
+  for filetype in a:context.filetypes
     let filetypes_dict[filetype] = 1
   endfor
 
-  for [key, source] in items(s:member_sources)
-    if has_key(filetypes_dict, source.filetype)
-          \ || has_key(filetypes_dict, '_')
-          \ || bufnr('%') == key
-          \ || (bufname('%') ==# '[Command Line]' && bufnr('#') == key)
-      call add(sources_list, [key, source])
-    endif
-  endfor
-
-  return sources_list
+  return values(filter(copy(s:member_sources),
+        \ "has_key(filetypes_dict, v:val.filetype)
+        \ || has_key(filetypes_dict, '_')
+        \ || bufnr('%') == v:key
+        \ || (bufname('%') ==# '[Command Line]' && bufwinnr('#') == v:key)"))
 endfunction"}}}
 
-function! s:initialize_source(srcname) "{{{
-  let path = fnamemodify(bufname(a:srcname), ':p')
+function! s:initialize_source(srcname, filetype) abort "{{{
+  let path = (a:srcname=~ '^\d\+$') ?
+        \ fnamemodify(bufname(a:srcname), ':p') : a:srcname
   let filename = fnamemodify(path, ':t')
   if filename == ''
     let filename = '[No Name]'
     let path .= '/[No Name]'
   endif
 
-  let ft = getbufvar(a:srcname, '&filetype')
+  let ft = a:filetype
   if ft == ''
     let ft = 'nothing'
   endif
 
   let s:member_sources[a:srcname] = {
         \ 'member_cache' : {}, 'filetype' : ft,
+        \ 'time' : getftime(path),
         \ 'keyword_pattern' : neocomplete#get_keyword_pattern(ft, s:source.name),
         \}
 endfunction"}}}
 
-function! s:get_member_pattern(filetype) "{{{
+function! s:get_member_pattern(filetype) abort "{{{
   return get(g:neocomplete#sources#member#input_patterns, a:filetype,
         \ get(g:neocomplete#sources#member#input_patterns, '_', ''))
+endfunction"}}}
+
+function! neocomplete#sources#member#remake_cache(filetype) abort "{{{
+  if !neocomplete#is_enabled()
+    call neocomplete#initialize()
+  endif
+
+  if get(g:neocomplete#sources#member#prefix_patterns, a:filetype, '') == ''
+    return
+  endif
+
+  for dictionary in
+        \ filter(map(neocomplete#sources#dictionary#get_dictionaries(a:filetype),
+        \  "neocomplete#util#substitute_path_separator(
+        \      fnamemodify(v:val, ':p'))"),
+        \ "filereadable(v:val) && (!has_key(s:member_sources, v:val)
+        \    || getftime(v:val) > s:member_sources[v:val].time)")
+    call s:make_cache_lines(dictionary, a:filetype, readfile(dictionary))
+  endfor
 endfunction"}}}
 
 let &cpo = s:save_cpo
