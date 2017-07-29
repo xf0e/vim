@@ -25,7 +25,7 @@ Plugin 'git://github.com/mhinz/vim-startify.git'
 call vundle#end()            " required
 filetype plugin indent on    " required
 
-colorscheme gruvbox
+colorscheme papercolors
 set guifont=PragmataPro\ 12
 
 "allow backspacing over everything in insert mode

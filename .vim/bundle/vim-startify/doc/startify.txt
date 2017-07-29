@@ -92,7 +92,6 @@ default values.
     |g:startify_custom_header|
     |g:startify_enable_special|
     |g:startify_list_order|
-    |g:startify_relative_path|
     |g:startify_skiplist|
     |g:startify_update_oldfiles|
 
@@ -104,7 +103,9 @@ default values.
     |g:startify_disable_at_vimenter|
     |g:startify_enable_unsafe|
     |g:startify_files_number|
-    |g:startify_mapping_nowait|
+    |g:startify_fortune_use_unicode|
+    |g:startify_padding_left|
+    |g:startify_relative_path|
     |g:startify_skiplist_server|
     |g:startify_use_env|
 
@@ -113,6 +114,7 @@ default values.
     |g:startify_session_before_save|
     |g:startify_session_delete_buffers|
     |g:startify_session_dir|
+    |g:startify_session_number|
     |g:startify_session_persistence|
     |g:startify_session_remove_lines|
     |g:startify_session_savecmds|
@@ -242,13 +244,18 @@ it on-the-fly, so that :Startify is always up-to-date.
 >
     let g:startify_session_autoload = 0
 <
-If you fire up "vim" in a directory that contains a "Session.vim", that session
-will be loaded automatically. Otherwise it will be shown as the top entry in
-the Startify buffer.
+If this option is enabled and you start Vim in a directory that contains a
+`Session.vim`, that session will be loaded automatically. Otherwise it will be
+shown as the top entry in the Startify buffer.
 
-This also works if you open a bookmarked directory.
+The same happens when you |:cd| to a directory that contains a `Session.vim`
+and execute |:Startify|.
 
-Great way to create a portable project folder.
+It also works if you open a bookmarked directory. See |g:startify_bookmarks|.
+
+This is great way to create a portable project folder!
+
+NOTE: This option is affected by |g:startify_session_delete_buffers|.
 
 ------------------------------------------------------------------------------
                                                 *g:startify_session_before_save*
@@ -281,9 +288,14 @@ This also works for sessions started with:
 ------------------------------------------------------------------------------
                                              *g:startify_session_delete_buffers*
 >
-    let g:startify_session_delete_buffers = 0
+    let g:startify_session_delete_buffers = 1
 <
-Delete open buffers before loading a new session.
+Delete all listed buffers when loading or closing a session.
+
+    1. When using |startify-:SLoad|.
+    2. When using |startify-:SClose|.
+    3. When using |g:startify_session_autoload|.
+    4. When choosing a session from the Startify buffer.
 
 ------------------------------------------------------------------------------
                                                       *g:startify_change_to_dir*
@@ -329,6 +341,28 @@ Example:
            \ escape(fnamemodify($HOME, ':p'), '\') .'mysecret.txt',
            \ ]
 <
+------------------------------------------------------------------------------
+                                                *g:startify_fortune_use_unicode*
+>
+    let g:startify_fortune_use_unicode = 0
+<
+By default, the fortune header uses ASCII characters, because they work for
+everyone. If you set this option to 1 and your 'encoding' is "utf-8", Unicode
+box-drawing characters will be used instead.
+
+This is not the default, because users of East Asian languages often set
+'ambiwidth' to "double" or make their terminal emulator treat characters of
+ambiguous width as double width. Both would make the drawed box look funny.
+
+For more information: http://unicode.org/reports/tr11
+
+------------------------------------------------------------------------------
+                                                       *g:startify_padding_left*
+>
+    let g:startify_padding_left = 3
+<
+The number of spaces used for left padding.
+
 ------------------------------------------------------------------------------
                                                     *g:startify_skiplist_server*
 >
@@ -428,6 +462,14 @@ Example:
            \ ]
 <
 ------------------------------------------------------------------------------
+                                                     *g:startify_session_number*
+>
+    let g:startify_session_number = 999
+<
+The maximum number of sessions to display. Makes the most sense together with
+|g:startify_session_sort|.
+
+------------------------------------------------------------------------------
                                                        *g:startify_session_sort*
 >
     let g:startify_session_sort = 0
@@ -500,9 +542,9 @@ Dynamic example:~
 <
 If you go for a dynamic header, you might find the following functions useful:
 
-    startify#fortune#quote()    raw random quote
-    startify#fortune#boxed()    formatted random quote in a box
-    startify#fortune#cowsay()   formatted random quote in a box + cow
+    startify#fortune#quote()     raw random quote
+    startify#fortune#boxed(...)  opt list or formatted random quote in a box
+    startify#fortune#cowsay()    formatted random quote in a box + cow
 
 Try them like this:
 >
@@ -547,11 +589,15 @@ Also have a look at |startify-faq-08|.
 If you don't set |g:startify_custom_header|, the internal cowsay implementation
 with shipped random quotes will be used.
 
-If you want to use your own quotes, add a list of lists, like this:
+To use your own quotes, set this option to a list of quotes. Each quote is
+either another list or a |Funcref| (see |expr-lambda|) that returns a list.
+
+Each element of the inner lists is put on an own line in the custom header.
 >
     let g:startify_custom_header_quotes = [
-        \ ['line 1', '', 'line 3'],
-        \ ['quote #2']
+        \ ['quote #1'],
+        \ ['quote #2', 'using', 'three lines'],
+        \ {-> systemlist('echo quote #3')}
         \ ]
 <
 ------------------------------------------------------------------------------
@@ -574,8 +620,11 @@ Don't run Startify at Vim startup. You can still call it anytime via
 >
     let g:startify_relative_path = 0
 <
-Show filenames relative to the current working directory instead of as
-absolute paths. This only applies to the "files" list, since the "dir" list is
+If the file is in or below the current working directory, use a relative path.
+Otherwise an absolute path is used. The latter prevents hard to grasp entries
+like `../../../../../foo`.
+
+NOTE: This only applies to the "files" list, since the "dir" list is
 relative by nature.
 
 -----------------------------------------------------------------------------
@@ -587,22 +636,6 @@ Show environment variables in path, if their name is shorter than their value.
 See |startify-colors| for highlighting them.
 
 $PWD and $OLDPWD are ignored.
-
------------------------------------------------------------------------------
-                                                    *g:startify_mapping_nowait*
->
-    let g:startify_mapping_nowait = 0
-<
-Force the usage of |<nowait>| in all mappings.
-
-This helps guarding against global mappings that start with the same
-characters as a Startify index, but might break local mappings, e.g. when you
-have indexes "1" and "11", the "11" won't be accessable anymore, since "1"
-will be opened right way.
-
-Only use this when you know what you're doing.
-
-NOTE: This option needs at least Vim 7.3.1261. It gets ignored otherwise.
 
 ==============================================================================
 AUTOCMD                                                       *startify-autocmd*
@@ -639,12 +672,17 @@ for one (Windows) or load the last used session (Unix).
 
 Providing only a part of the session name works too, if you complete the
 argument with either <c-d> or <tab> afterwards.
+
+NOTE: This command is affected by |g:startify_session_delete_buffers|.
+
                                                               *startify-:SClose*
 >
     :SClose
 <
 Save and close the current session, close all listed buffers, and open the
 Startify buffer.
+
+NOTE: This command is affected by |g:startify_session_delete_buffers|.
 
 ==============================================================================
 MAPPINGS                                                     *startify-mappings*
@@ -727,7 +765,7 @@ FAQ                                                               *startify-faq*
     |startify-faq-02|  Recent files aren't shown!
     |startify-faq-03|  I have broken colors when using sessions!
     |startify-faq-04|  How to disable common but unimportant files?
-    |startify-faq-05|  CtrlP or NERDTree open a split in Startify!
+    |startify-faq-05|  Why is the Startify buffer not using buftype=nofile?
     |startify-faq-06|  How do I get both NERDTree and Startify working at
                      startup?
     |startify-faq-07|  The session autoload feature is not working!
@@ -792,16 +830,18 @@ Use |g:startify_skiplist|.
 
 ------------------------------------------------------------------------------
                                                                *startify-faq-05*
-CtrlP or NERDTree open a split in Startify!~
+Why is the Startify buffer not using buftype=nofile?~
 
-Put this in your vimrc:
+Did you accidentally use |:write| in the Startify buffer and it was saved to
+an actual file on disk? It's because buftype=nofile is not used.
+
+This is done to improve compatibility with other plugins. When buftype=nofile
+was set, plugins like CtrlP or NERDTree would open splits instead of reusing
+the window showing the Startify buffer.
+
+If you understand this but want it anyway, put this in your vimrc:
 >
-    autocmd User Startified setlocal buftype=
-<
-If you're using CtrlP without NERDTree, there is an even more elegant
-solution:
->
-    let g:ctrlp_reuse_window = 'startify'
+    autocmd User Startified setlocal buftype=nofile
 <
 ------------------------------------------------------------------------------
                                                                *startify-faq-06*
@@ -831,12 +871,12 @@ How do I center my header/footer?~
 Try something along these lines:
 >
     function! s:filter_header(lines) abort
-        let longest_line   = max(map(copy(a:lines), 'len(v:val)'))
+        let longest_line   = max(map(copy(a:lines), 'strwidth(v:val)'))
         let centered_lines = map(copy(a:lines),
             \ 'repeat(" ", (&columns / 2) - (longest_line / 2)) . v:val')
         return centered_lines
     endfunction
-    let g:startify_custom_header = s:filter_header(['a', 'bb', 'ccc'])
+    let g:startify_custom_header = s:filter_header(startify#fortune#cowsay())
 <
 ------------------------------------------------------------------------------
                                                                *startify-faq-09*
@@ -931,22 +971,24 @@ This is my configuration..
     let g:startify_update_oldfiles        = 1
     let g:startify_session_autoload       = 1
     let g:startify_session_persistence    = 1
-    let g:startify_session_delete_buffers = 1
 
     let g:startify_skiplist = [
-                \ 'COMMIT_EDITMSG',
-                \ 'bundle/.*/doc',
-                \ '/data/repo/neovim/runtime/doc',
-                \ '/Users/mhi/local/vim/share/vim/vim74/doc',
-                \ ]
+            \ 'COMMIT_EDITMSG',
+            \ 'bundle/.*/doc',
+            \ '/data/repo/neovim/runtime/doc',
+            \ '/Users/mhi/local/vim/share/vim/vim74/doc',
+            \ ]
 
     let g:startify_bookmarks = [
-                \ { 'c': '~/.vim/vimrc' },
-                \ '~/golfing',
-                \ ]
+            \ { 'c': '~/.vim/vimrc' },
+            \ '~/golfing',
+            \ ]
+
+    let g:startify_custom_header =
+            \ startify#fortune#cowsay('═','║','╔','╗','╝','╚')
 
     let g:startify_custom_footer =
-          \ ['', "   Vim is charityware. Please read ':help uganda'.", '']
+           \ ['', "   Vim is charityware. Please read ':help uganda'.", '']
 
     hi StartifyBracket ctermfg=240
     hi StartifyFile    ctermfg=147

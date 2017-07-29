@@ -7,15 +7,14 @@ import os
 import sys
 import textwrap
 
-from .helpers import TestCase, cwd_at
-
 import pytest
-import jedi
-from jedi._compatibility import u
+
 from jedi import Script
 from jedi import api
+from jedi import common
 from jedi.evaluate import imports
-from jedi.parser import Parser, load_grammar
+from jedi.parser.python import parse
+from .helpers import TestCase, cwd_at
 
 #jedi.set_debug_function()
 
@@ -66,8 +65,9 @@ class TestRegression(TestCase):
         src1 = "def r(a): return a"
         # Other fictional modules in another place in the fs.
         src2 = 'from .. import setup; setup.r(1)'
-        imports.load_module(os.path.abspath(fname), src2)
-        result = Script(src1, path='../setup.py').goto_definitions()
+        script = Script(src1, path='../setup.py')
+        imports.load_module(script._evaluator, os.path.abspath(fname), src2)
+        result = script.goto_definitions()
         assert len(result) == 1
         assert result[0].description == 'class int'
 
@@ -100,9 +100,9 @@ class TestRegression(TestCase):
 
     def test_end_pos_line(self):
         # jedi issue #150
-        s = u("x()\nx( )\nx(  )\nx (  )")
-        parser = Parser(load_grammar(), s)
-        for i, s in enumerate(parser.module.statements):
+        s = "x()\nx( )\nx(  )\nx (  )"
+        module = parse(s)
+        for i, s in enumerate(module.statements):
             assert s.end_pos == (i + 1, i + 3)
 
     def check_definition_by_marker(self, source, after_cursor, names):
@@ -123,7 +123,6 @@ class TestRegression(TestCase):
                 break
         column = len(line) - len(after_cursor)
         defs = Script(source, i + 1, column).goto_definitions()
-        print(defs)
         assert [d.name for d in defs] == names
 
     def test_backslash_continuation(self):
@@ -145,7 +144,7 @@ class TestRegression(TestCase):
         x = 0
         a = \
           [1, 2, 3, 4, 5, 6, 7, 8, 9, (x)]  # <-- here
-        """, '(x)]  # <-- here', [])
+        """, '(x)]  # <-- here', ['int'])
 
     def test_generator(self):
         # Did have some problems with the usage of generator completions this
@@ -154,6 +153,39 @@ class TestRegression(TestCase):
             "    yield 1\n" \
             "abc()."
         assert Script(s).completions()
+
+    def test_fake_subnodes(self):
+        """
+        Test the number of subnodes of a fake object.
+
+        There was a bug where the number of child nodes would grow on every
+        call to :func:``jedi.evaluate.compiled.fake.get_faked``.
+
+        See Github PR#649 and isseu #591.
+        """
+        def get_str_completion(values):
+            for c in values:
+                if c.name == 'str':
+                    return c
+        limit = None
+        for i in range(2):
+            completions = Script('').completions()
+            c = get_str_completion(completions)
+            str_context, = c._name.infer()
+            n = len(str_context.tree_node.children[-1].children)
+            if i == 0:
+                limit = n
+            else:
+                assert n == limit
+
+    def test_source_to_unicode_unicode_text(self):
+        source = (
+            b"# vim: fileencoding=utf-8\n"
+            b"# \xe3\x81\x82\xe3\x81\x84\xe3\x81\x86\xe3\x81\x88\xe3\x81\x8a\n"
+        )
+        actual = common.source_to_unicode(source)
+        expected = source.decode('utf-8')
+        assert actual == expected
 
 
 def test_loading_unicode_files_with_bad_global_charset(monkeypatch, tmpdir):

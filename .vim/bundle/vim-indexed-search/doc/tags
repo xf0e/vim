@@ -2,6 +2,7 @@
 g:indexed_search_center	indexedsearch.txt	/*g:indexed_search_center*
 g:indexed_search_colors	indexedsearch.txt	/*g:indexed_search_colors*
 g:indexed_search_dont_move	indexedsearch.txt	/*g:indexed_search_dont_move*
+g:indexed_search_line_info	indexedsearch.txt	/*g:indexed_search_line_info*
 g:indexed_search_mappings	indexedsearch.txt	/*g:indexed_search_mappings*
 g:indexed_search_max_hits	indexedsearch.txt	/*g:indexed_search_max_hits*
 g:indexed_search_max_lines	indexedsearch.txt	/*g:indexed_search_max_lines*

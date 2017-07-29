@@ -39,13 +39,16 @@ b[8:]
 #? list()
 b[int():]
 
+#? list()
+b[:]
+
 
 class _StrangeSlice():
-    def __getitem__(self, slice):
-        return slice
+    def __getitem__(self, sliced):
+        return sliced
 
 # Should not result in an error, just because the slice itself is returned.
-#? []
+#? slice()
 _StrangeSlice()[1:2]
 
 
@@ -125,6 +128,9 @@ f
 # -----------------
 # unnessecary braces
 # -----------------
+a = (1)
+#? int()
+a
 #? int()
 (1)
 #? int()
@@ -204,8 +210,21 @@ dic2['asdf']
 dic2[r'asdf']
 #? int()
 dic2[r'asdf']
+#? int()
+dic2[r'as' 'd' u'f']
 #? int() str()
 dic2['just_something']
+
+# unpacking
+a, b = dic2
+#? str()
+a
+a, b = {1: 'x', 2.0: 1j}
+#? int() float()
+a
+#? int() float()
+b
+
 
 def f():
     """ github #83 """
@@ -231,6 +250,11 @@ y(**d)
 dic = {str(key): ''}
 #? str()
 dic['']
+
+
+for x in {1: 3.0, '': 1j}:
+    #? int() str()
+    x
 
 # -----------------
 # with variable as index
@@ -287,6 +311,17 @@ for i in 0, 2:
     #? int() str()
     GetItemWithList()[i]
 
+
+# With super
+class SuperYeah(list):
+    def __getitem__(self, index):
+        return super()[index]
+
+#?
+SuperYeah([1])[0]
+#?
+SuperYeah()[0]
+
 # -----------------
 # conversions
 # -----------------
@@ -302,6 +337,8 @@ set(a)[0]
 
 #? int() str()
 list(set(a))[1]
+#? int() str()
+next(iter(set(a)))
 #? int() str()
 list(list(set(a)))[1]
 
@@ -345,23 +382,51 @@ for i in set(a for a in [1]):
 
 
 # -----------------
-# Recursions
-# -----------------
-
-def to_list(iterable):
-    return list(set(iterable))
-
-
-def recursion1(foo):
-    return to_list(to_list(foo)) + recursion1(foo)
-
-#? int()
-recursion1([1,2])[0]
-
-# -----------------
 # Merged Arrays
 # -----------------
 
 for x in [1] + ['']:
     #? int() str()
     x
+
+# -----------------
+# For loops with attribute assignment.
+# -----------------
+def test_func():
+    x = 'asdf'
+    for x.something in [6,7,8]:
+        pass
+    #? str()
+    x
+
+    for x.something, b in [[6, 6.0]]:
+        pass
+    #? str()
+    x
+
+
+# -----------------
+# PEP 3132 Extended Iterable Unpacking (star unpacking)
+# -----------------
+
+a, *b, c = [1, 'b', list, dict]
+#? int()
+a
+#? str()
+b
+#? list
+c
+
+# Not valid syntax
+a, *b, *c = [1, 'd', list]
+#? int()
+a
+#? str()
+b
+#? list
+c
+
+lc = [x for a, *x in [(1, '', 1.0)]]
+
+#?
+lc[0][0]

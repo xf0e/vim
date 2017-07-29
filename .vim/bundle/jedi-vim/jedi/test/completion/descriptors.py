@@ -62,14 +62,14 @@ class B():
     p = property(t)
 
 #? []
-B().r()
+B().r().
 #? int()
 B().r
 
 #? str()
 B().p
 #? []
-B().p()
+B().p().
 
 class PropClass():
     def __init__(self, a):
@@ -140,6 +140,8 @@ class E(object):
     def f(x):
         return x
     f = staticmethod(f)
+    #?
+    f.__func
 
     @staticmethod
     def g(x):

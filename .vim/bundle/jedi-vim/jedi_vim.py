@@ -30,10 +30,12 @@ class PythonToVimStr(unicode):
     __slots__ = []
 
     def __new__(cls, obj, encoding='UTF-8'):
-        if is_py3 or isinstance(obj, unicode):
-            return unicode.__new__(cls, obj)
-        else:
-            return unicode.__new__(cls, obj, encoding)
+        if not (is_py3 or isinstance(obj, unicode)):
+            obj = unicode.__new__(cls, obj, encoding)
+
+        # Vim cannot deal with zero bytes:
+        obj = obj.replace('\0', '\\0')
+        return unicode.__new__(cls, obj)
 
     def __repr__(self):
         # this is totally stupid and makes no sense but vim/python unicode
@@ -87,8 +89,8 @@ def no_jedi_warning(error=None):
 
 
 def echo_highlight(msg):
-    vim_command('echohl WarningMsg | echom "{0}" | echohl None'.format(
-        msg.replace('"', '\\"')))
+    vim_command('echohl WarningMsg | echom "jedi-vim: {0}" | echohl None'.format(
+        str(msg).replace('"', '\\"')))
 
 
 try:
@@ -96,11 +98,15 @@ try:
 except ImportError as e:
     no_jedi_warning(str(e))
     jedi = None
+    jedi_import_error = str(e)
 else:
     try:
         version = jedi.__version__
     except Exception as e:  # e.g. AttributeError
-        echo_highlight("Could not load jedi python module: {0}".format(e))
+        echo_highlight(
+            "Error when loading the jedi python module ({0}). "
+            "Please ensure that Jedi is installed correctly (see Installation "
+            "in the README.".format(e))
         jedi = None
     else:
         if isinstance(version, str):
@@ -245,11 +251,6 @@ def goto(mode="goto", no_output=False):
         if not definitions:
             echo_highlight("Couldn't find any definitions for this.")
         elif len(definitions) == 1 and mode != "related_name":
-            # just add some mark to add the current position to the jumplist.
-            # this is ugly, because it overrides the mark for '`', so if anyone
-            # has a better idea, let me know.
-            vim_command('normal! m`')
-
             d = list(definitions)[0]
             if d.in_builtin_module():
                 if d.is_keyword:
@@ -335,7 +336,8 @@ def clear_call_signatures():
     # 1. Search for a line with a call signature and save the appended
     #    characters
     # 2. Actually replace the line and redo the status quo.
-    py_regex = r'%sjedi=([0-9]+), (.*?)%s.*?%sjedi%s'.replace('%s', e)
+    py_regex = r'%sjedi=([0-9]+), (.*?)%s.*?%sjedi%s'.replace(
+        '%s', re.escape(e))
     for i, line in enumerate(vim.current.buffer):
         match = re.search(py_regex, line)
         if match is not None:
@@ -509,15 +511,14 @@ def rename():
     if not int(vim.eval('a:0')):
         # Need to save the cursor position before insert mode
         cursor = vim.current.window.cursor
-        changenr = vim.eval('changenr()') # track undo tree
+        changenr = vim.eval('changenr()')  # track undo tree
         vim_command('augroup jedi_rename')
         vim_command('autocmd InsertLeave <buffer> call jedi#rename'
-                '({}, {}, {})'.format(cursor[0], cursor[1], changenr))
+                    '({}, {}, {})'.format(cursor[0], cursor[1], changenr))
         vim_command('augroup END')
 
         vim_command("let s:jedi_replace_orig = expand('<cword>')")
         vim_command('normal! diw')
-        vim_command("let s:jedi_changedtick = b:changedtick")
         vim_command('startinsert')
 
     else:
@@ -566,7 +567,7 @@ def do_rename(replace, orig=None):
     # Sort the whole thing reverse (positions at the end of the line
     # must be first, because they move the stuff before the position).
     temp_rename = sorted(temp_rename, reverse=True,
-                         key=lambda x: (x.module_path, x.start_pos))
+                         key=lambda x: (x.module_path, x.line, x.column))
     buffers = set()
     for r in temp_rename:
         if r.in_builtin_module():
@@ -584,7 +585,7 @@ def do_rename(replace, orig=None):
         saved_view = vim_eval('string(winsaveview())')
 
         # Replace original word.
-        vim.current.window.cursor = r.start_pos
+        vim.current.window.cursor = (r.line, r.column)
         vim_command('normal! c{0:d}l{1}'.format(len(orig), replace))
 
         # Restore view.

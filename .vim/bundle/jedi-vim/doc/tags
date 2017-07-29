@@ -1,5 +1,4 @@
 :Pyimport	jedi-vim.txt	/*:Pyimport*
-:tjump	jedi-vim.txt	/*:tjump*
 g:jedi#auto_close_doc	jedi-vim.txt	/*g:jedi#auto_close_doc*
 g:jedi#auto_initialization	jedi-vim.txt	/*g:jedi#auto_initialization*
 g:jedi#auto_vim_configuration	jedi-vim.txt	/*g:jedi#auto_vim_configuration*

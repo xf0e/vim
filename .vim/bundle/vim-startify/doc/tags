@@ -10,13 +10,15 @@ g:startify_disable_at_vimenter	startify.txt	/*g:startify_disable_at_vimenter*
 g:startify_enable_special	startify.txt	/*g:startify_enable_special*
 g:startify_enable_unsafe	startify.txt	/*g:startify_enable_unsafe*
 g:startify_files_number	startify.txt	/*g:startify_files_number*
+g:startify_fortune_use_unicode	startify.txt	/*g:startify_fortune_use_unicode*
 g:startify_list_order	startify.txt	/*g:startify_list_order*
-g:startify_mapping_nowait	startify.txt	/*g:startify_mapping_nowait*
+g:startify_padding_left	startify.txt	/*g:startify_padding_left*
 g:startify_relative_path	startify.txt	/*g:startify_relative_path*
 g:startify_session_autoload	startify.txt	/*g:startify_session_autoload*
 g:startify_session_before_save	startify.txt	/*g:startify_session_before_save*
 g:startify_session_delete_buffers	startify.txt	/*g:startify_session_delete_buffers*
 g:startify_session_dir	startify.txt	/*g:startify_session_dir*
+g:startify_session_number	startify.txt	/*g:startify_session_number*
 g:startify_session_persistence	startify.txt	/*g:startify_session_persistence*
 g:startify_session_remove_lines	startify.txt	/*g:startify_session_remove_lines*
 g:startify_session_savecmds	startify.txt	/*g:startify_session_savecmds*

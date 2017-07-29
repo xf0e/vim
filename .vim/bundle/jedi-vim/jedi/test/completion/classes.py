@@ -50,6 +50,8 @@ class TestClass(object):
         self.var_local = 3
         #? ['var_class', 'var_func', 'var_inst', 'var_local']
         self.var_
+        #?
+        var_local
 
     def ret(self, a1):
         # should not know any class functions!
@@ -82,6 +84,9 @@ inst.var_local
 TestClass.var_local.
 
 #? int()
+TestClass().ret(1)
+# Should not return int(), because we want the type before `.ret(1)`.
+#? 11 TestClass()
 TestClass().ret(1)
 #? int()
 inst.ret(1)
@@ -131,6 +136,8 @@ A().addition
 A().addition = None
 #? 8 int()
 A(1).addition = None
+#? 1 A
+A(1).addition = None
 a = A()
 #? 8 int()
 a.addition = None
@@ -155,6 +162,7 @@ class Mixin(SuperClass):
     def method_mixin(self):
         return int
 
+#? 20 SuperClass
 class SubClass(SuperClass):
     class_sub = 3
     def __init__(self):
@@ -238,7 +246,10 @@ class V:
 V(1).b()
 #? int()
 V(1).c()
-#? []
+#?
+V(1).d()
+# Only keywords should be possible to complete.
+#? ['is', 'in', 'not', 'and', 'or', 'if']
 V(1).d()
 
 
@@ -285,20 +296,6 @@ class A():
 
 #? list()
 A().b()
-
-# -----------------
-# recursions
-# -----------------
-def Recursion():
-    def recurse(self):
-        self.a = self.a
-        self.b = self.b.recurse()
-
-#?
-Recursion().a
-
-#?
-Recursion().b
 
 # -----------------
 # ducktyping
@@ -390,10 +387,33 @@ class PrivateVar():
         self.__var
         #? ['__var']
         self.__var
+
+    def __private_func(self):
+        return 1
+
+    def wrap_private(self):
+        return self.__private_func()
 #? []
 PrivateVar().__var
 #?
 PrivateVar().__var
+#? []
+PrivateVar().__private_func
+#? int()
+PrivateVar().wrap_private()
+
+
+class PrivateSub(PrivateVar):
+    def test(self):
+        #? []
+        self.__var
+
+    def wrap_private(self):
+        #? []
+        self.__var
+
+#? []
+PrivateSub().__var
 
 # -----------------
 # super
@@ -473,3 +493,19 @@ B().a
 B.b
 #? int()
 B().b
+
+
+# -----------------
+# With import
+# -----------------
+
+from import_tree.classes import Config2, BaseClass
+
+class Config(BaseClass):
+    """#884"""
+
+#? Config2()
+Config.mode
+
+#? int()
+Config.mode2

@@ -1,3 +1,5 @@
+scriptencoding utf-8
+
 " Variables {{{1
 let s:cow = [
       \ '       o',
@@ -8,9 +10,28 @@ let s:cow = [
       \ '                ||     ||',
       \ ]
 
+let s:unicode = &encoding == 'utf-8' && get(g:, 'startify_fortune_use_unicode')
+
+let s:char_top_bottom   = ['-', '─'][s:unicode]
+let s:char_sides        = ['|', '│'][s:unicode]
+let s:char_top_left     = ['*', '╭'][s:unicode]
+let s:char_top_right    = ['*', '╮'][s:unicode]
+let s:char_bottom_right = ['*', '╯'][s:unicode]
+let s:char_bottom_left  = ['*', '╰'][s:unicode]
+
 let s:quotes = exists('g:startify_custom_header_quotes')
       \ ? g:startify_custom_header_quotes
       \ : [
+      \ ["Debugging is twice as hard as writing the code in the first place. Therefore, if you write the code as cleverly as possible, you are, by definition, not smart enough to debug it.", '', '- Brian Kernighan'],
+      \ ["If you don't finish then you're just busy, not productive."],
+      \ ['Adapting old programs to fit new machines usually means adapting new machines to behave like old ones.', '', '- Alan Perlis'],
+      \ ['Fools ignore complexity. Pragmatists suffer it. Some can avoid it. Geniuses remove it.', '', '- Alan Perlis'],
+      \ ['It is easier to change the specification to fit the program than vice versa.', '', '- Alan Perlis'],
+      \ ['Simplicity does not precede complexity, but follows it.', '', '- Alan Perlis'],
+      \ ['Optimization hinders evolution.', '', '- Alan Perlis'],
+      \ ['Recursion is the root of computation since it trades description for time.', '', '- Alan Perlis'],
+      \ ['It is better to have 100 functions operate on one data structure than 10 functions on 10 data structures.', '', '- Alan Perlis'],
+      \ ['There is nothing quite so useless as doing with great efficiency something that should not be done at all.', '', '- Peter Drucker'],
       \ ["If you don't fail at least 90% of the time, you're not aiming high enough.", '', '- Alan Kay'],
       \ ['I think a lot of new programmers like to use advanced data structures and advanced language features as a way of demonstrating their ability. I call it the lion-tamer syndrome. Such demonstrations are impressive, but unless they actually translate into real wins for the project, avoid them.', '', '- Glyn Williams'],
       \ ['I would rather die of passion than of boredom.', '', '- Vincent Van Gogh'],
@@ -37,7 +58,6 @@ let s:quotes = exists('g:startify_custom_header_quotes')
       \ ['Computers are harder to maintain at high altitude. Thinner air means less cushion between disk heads and platters. Also more radiation.'],
       \ ['Almost every programming language is overrated by its practitioners.', '', '- Larry Wall'],
       \ ['Fancy algorithms are slow when n is small, and n is usually small.', '', '- Rob Pike'],
-      \ ['If C++ and Java are about type hierarchies and the taxonomy of types, Go is about composition.', '', '- Rob Pike'],
       \ ['Methods are just functions with a special first argument.', '', '- Andrew Gerrand'],
       \
       \ ['Care about your craft.', '', 'Why spend your life developing software unless you care about doing it well?'],
@@ -108,7 +128,7 @@ let s:quotes = exists('g:startify_custom_header_quotes')
       \ ['Test early. Test often. Test automatically.', '', 'Tests that run with every build are much more effective than test plans that sit on a shelf.'],
       \ ['Use saboteurs to test your testing.', '', 'Introduce bugs on purpose in a separate copy of the source to verify that testing will catch them.'],
       \ ['Find bugs once.', '', 'Once a human tester finds a bug, it should be the last time a human tester finds that bug. Automatic tests should check for it from then on.'],
-      \ ['Sign your work.', '', 'Craftsmen of an earlier age were proud to sign their work. You should be, too.']
+      \ ['Sign your work.', '', 'Craftsmen of an earlier age were proud to sign their work. You should be, too.'],
       \ ]
 
 " Function: s:get_random_offset {{{1
@@ -118,14 +138,16 @@ endfunction
 
 " Function: s:draw_box {{{1
 function! s:draw_box(lines) abort
-  let longest_line = max(map(copy(a:lines), 'len(v:val)'))
-  let topbottom = '*'. repeat('-', longest_line + 2) .'*'
-  let lines = [topbottom]
+  let longest_line = max(map(copy(a:lines), 'strwidth(v:val)'))
+  let top_bottom_without_corners = repeat(s:char_top_bottom, longest_line + 2)
+  let top = s:char_top_left . top_bottom_without_corners . s:char_top_right
+  let bottom = s:char_bottom_left . top_bottom_without_corners . s:char_bottom_right
+  let lines = [top]
   for l in a:lines
-    let offset = longest_line - len(l)
-    let lines += ['| '. l . repeat(' ', offset) .' |']
+    let offset = longest_line - strwidth(l)
+    let lines += [s:char_sides . ' '. l . repeat(' ', offset) .' ' . s:char_sides]
   endfor
-  let lines += [topbottom]
+  let lines += [bottom]
   return lines
 endfunction
 
@@ -135,9 +157,10 @@ function! startify#fortune#quote() abort
 endfunction
 
 " Function: #boxed {{{1
-function! startify#fortune#boxed() abort
+function! startify#fortune#boxed(...) abort
   let wrapped_quote = []
-  let quote = startify#fortune#quote()
+  let Quote = a:0 && type(a:1) == type([]) ? a:1 : startify#fortune#quote()
+  let quote = type(Quote) == type(function('tr')) ? Quote() : Quote
   for line in quote
     let wrapped_quote += split(line, '\%50c.\{-}\zs\s', 1)
   endfor
@@ -146,7 +169,15 @@ function! startify#fortune#boxed() abort
 endfunction
 
 " Function: #cowsay {{{1
-function! startify#fortune#cowsay() abort
+function! startify#fortune#cowsay(...) abort
+  if a:0
+    let s:char_top_bottom   = get(a:000, 0, s:char_top_bottom)
+    let s:char_sides        = get(a:000, 1, s:char_sides)
+    let s:char_top_left     = get(a:000, 2, s:char_top_left)
+    let s:char_top_right    = get(a:000, 3, s:char_top_right)
+    let s:char_bottom_right = get(a:000, 4, s:char_bottom_right)
+    let s:char_bottom_left  = get(a:000, 5, s:char_bottom_left)
+  endif
   let boxed_quote = startify#fortune#boxed()
   let boxed_quote += s:cow
   return map(boxed_quote, '"   ". v:val')

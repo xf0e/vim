@@ -118,7 +118,11 @@ class TestCase(object):
         try:
             with open(self.path) as f:
                 self.script = jedi.Script(f.read(), self.line, self.column, self.path)
-            self.objects = getattr(self.script, self.operation)()
+            kwargs = {}
+            if self.operation == 'goto_assignments':
+                kwargs['follow_imports'] = random.choice([False, True])
+
+            self.objects = getattr(self.script, self.operation)(**kwargs)
             if print_result:
                 print("{path}: Line {line} column {column}".format(**self.__dict__))
                 self.show_location(self.line, self.column)
@@ -145,7 +149,7 @@ class TestCase(object):
         # Three lines ought to be enough
         lower = lineno - show if lineno - show > 0 else 0
         prefix = '  |'
-        for i, line in enumerate(self.script.source.split('\n')[lower:lineno]):
+        for i, line in enumerate(self.script._source.split('\n')[lower:lineno]):
             print(prefix, lower + i + 1, line)
         print(prefix, '   ', ' ' * (column + len(str(lineno))), '^')
 
@@ -169,7 +173,7 @@ class TestCase(object):
                 self.show_location(completion.line, completion.column)
 
     def show_errors(self):
-        print(self.traceback)
+        sys.stderr.write(self.traceback)
         print(("Error with running Script(...).{operation}() with\n"
               "\tpath:   {path}\n"
               "\tline:   {line}\n"

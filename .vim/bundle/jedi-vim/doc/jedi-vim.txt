@@ -373,6 +373,7 @@ However, when working with large modules, this can slow down your typing flow
 since you have to wait for jedi to parse the module and show the completion
 menu. By disabling this setting, completion is only started when you manually
 press the completion key.
+You need to also have `g:jedi#completions_enabled` enabled for this.
 
 Options: 0 or 1
 Default: 1 (Start completion on typing a period)
@@ -510,7 +511,7 @@ Default: 1 (enabled by default)
 ------------------------------------------------------------------------------
 6.14. `g:jedi#use_tag_stack`                    *g:jedi#use_tag_stack*
 
-Write results of |jedi#goto| to a temporary file and use the *:tjump* command
+Write results of |jedi#goto| to a temporary file and use the |:tjump| command
 to enable full |tagstack| functionality. Use of the tag stack allows
 returning to the usage of a function with CTRL-T after exploring the
 definition with arbitrary changes to the |jumplist|.

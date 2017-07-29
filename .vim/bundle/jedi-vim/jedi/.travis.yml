@@ -1,20 +1,25 @@
 language: python
-env:
-    - TOXENV=py26
-    - TOXENV=py27
-    - TOXENV=py32
-    - TOXENV=py33
-    - TOXENV=py34
-    - TOXENV=pypy
-    - TOXENV=cov
-    - TOXENV=sith
+sudo: false
+python:
+  - 2.6
+  - 2.7
+  - 3.3
+  - 3.4
+  - 3.5
+  - 3.6
+  - pypy
 matrix:
-    allow_failures:
-        - env: TOXENV=cov
-        - env: TOXENV=sith
-        - env: TOXENV=pypy
+  allow_failures:
+    - python: pypy
+    - env: TOXENV=cov
+    - env: TOXENV=sith
+  include:
+    - python: 3.5
+      env: TOXENV=cov
+    - python: 3.5
+      env: TOXENV=sith
 install:
-    - pip install --quiet --use-mirrors tox
+    - pip install --quiet tox-travis
 script:
     - tox
 after_script:
@@ -22,3 +27,4 @@ after_script:
       pip install --quiet --use-mirrors coveralls;
       coveralls;
       fi
+

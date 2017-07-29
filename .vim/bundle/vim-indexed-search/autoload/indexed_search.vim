@@ -17,24 +17,18 @@ function! s:colored_echo(msg, hl)
     echohl None
 endfunction
 
-function! s:destroy_augroup(group)
-    execute "augroup ". a:group
-        execute "autocmd!"
-    augroup END
-    execute "augroup! ". a:group
-endfunction
-
-
 function! s:search(query, force)
     let winview = winsaveview()
     let line = winview["lnum"]
     let col = winview["col"] + 1
-    let [total, exact, after] = [0, -1, 0]
+    let [total, exact, after, first_match_lnum, last_match_lnum] = [0, -1, 0, 0, 0]
 
     call cursor(1, 1)
     let [matchline, matchcol] = searchpos(a:query, 'Wc')
+    let first_match_lnum = matchline
     while matchline && (total <= g:indexed_search_max_hits || a:force)
         let total += 1
+        let last_match_lnum = matchline
         if (matchline == line && matchcol == col)
             let exact = total
         elseif matchline < line || (matchline == line && matchcol < col)
@@ -44,10 +38,10 @@ function! s:search(query, force)
     endwhile
 
     call winrestview(winview)
-    return [total, exact, after]
+    return [total, exact, after, first_match_lnum, last_match_lnum]
 endfunction
 
-function! s:index_message(total, exact, after, force)
+function! s:index_message(total, exact, after, first_match_lnum, last_match_lnum, force)
     let hl = "Directory"
     let msg = ""
 
@@ -59,7 +53,14 @@ function! s:index_message(total, exact, after, force)
     else
         let matches = a:total
     endif
-    let shortmatch = matches . (g:indexed_search_shortmess ? "" : " matches")
+    if g:indexed_search_line_info
+      let line_info =    " (FM:" . a:first_match_lnum
+                      \. ", LM:" . a:last_match_lnum 
+                      \. ")" 
+    else
+      let line_info = ""
+    endif
+    let shortmatch = matches . line_info . (g:indexed_search_shortmess ? "" : " matches")
 
     if a:total == 0
         let hl = "Error"
@@ -75,7 +76,7 @@ function! s:index_message(total, exact, after, force)
         let msg = "Last of ". shortmatch
     elseif a:exact >= 0
         let msg = (g:indexed_search_shortmess ? "" : "Match ")
-                 \. a:exact ." of ". matches
+                 \. a:exact ." of ". matches . line_info
     elseif a:after == 0
         let hl = "MoreMsg"
         let msg = "Before first match, of ". shortmatch
@@ -85,7 +86,7 @@ function! s:index_message(total, exact, after, force)
         let msg = "After last match of ". shortmatch
         if a:total == 1 | let msg = "After single match" | endif
     else
-        let msg = "Between matches ". a:after ."-". (a:after+1) ." of ". matches
+        let msg = "Between matches ". a:after ."-". (a:after+1) ." of ". matches . line_info
     endif
 
     return [hl, msg."  /".@/."/"]
@@ -96,8 +97,8 @@ function! s:current_index(force)
         return ['', '']
     endif
 
-    let [total, exact, after] = s:search(@/, a:force)
-    return s:index_message(total, exact, after, a:force)
+    let [total, exact, after, first_match_lnum, last_match_lnum] = s:search(@/, a:force)
+    return s:index_message(total, exact, after, first_match_lnum, last_match_lnum, a:force)
 endfunction
 
 function! s:echo_index(force)
@@ -117,6 +118,6 @@ function! indexed_search#show_index(force)
         autocmd CursorHold *
             \ let &ut = s:save_ut         |
             \ call s:echo_index(s:force)  |
-            \ call s:destroy_augroup('IndexedSearchAutoCmds')
+            \ autocmd! IndexedSearchAutoCmds
     augroup END
 endfunction

@@ -1,3 +1,39 @@
+# -----------------
+# First a few name resolution things
+# -----------------
+
+x = 3
+if NOT_DEFINED:
+    x = ''
+#? 6 int()
+elif x:
+    pass
+else:
+    #? int()
+    x
+
+x = 1
+try:
+    x = ''
+#? 8 int() str()
+except x:
+    #? 5 int() str()
+    x
+    x = 1.0
+else:
+    #? 5 int() str()
+    x
+    x = list
+finally:
+    #? 5 int() str() float() list
+    x
+    x = tuple
+
+
+# -----------------
+# Return checks
+# -----------------
+
 def foo(x):
     if 1.0:
         return 1
@@ -206,6 +242,11 @@ if 0:
     #?
     nested
 
+if False:
+    in_false = 1
+    #? ['in_false']
+    in_false
+
 # -----------------
 # True objects like modules
 # -----------------
@@ -217,4 +258,41 @@ if X:
 else:
     a = ''
 #? int()
+a
+
+
+# -----------------
+# Recursion issues
+# -----------------
+
+def possible_recursion_error(filename):
+    if filename == 'a':
+        return filename
+    # It seems like without the brackets there wouldn't be a RecursionError.
+    elif type(filename) == str:
+        return filename
+
+
+if NOT_DEFINED:
+    s = str()
+else:
+    s = str()
+#? str()
+possible_recursion_error(s)
+
+
+# -----------------
+# In combination with imports
+# -----------------
+
+from import_tree import flow_import
+
+if 1 == flow_import.env:
+    a = 1
+elif 2 == flow_import.env:
+    a = ''
+elif 3 == flow_import.env:
+    a = 1.0
+
+#? int() str()
 a

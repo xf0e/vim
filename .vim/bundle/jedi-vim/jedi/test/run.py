@@ -25,10 +25,10 @@ multiple Python versions.
 .. _tox: http://testrun.org/tox
 
 Integration test cases are located in ``test/completion`` directory
-and each test cases are indicated by the comment ``#?`` (completions /
-definitions), ``#!`` (assignments) and ``#<`` (usages).  There is also
-support for third party libraries. In a normal test run they are not
-being executed, you have to provide a ``--thirdparty`` option.
+and each test case is indicated by either the comment ``#?`` (completions /
+definitions), ``#!`` (assignments), or ``#<`` (usages).
+There is also support for third party libraries. In a normal test run they are
+not being executed, you have to provide a ``--thirdparty`` option.
 
 In addition to standard `-k` and `-m` options in py.test, you can use
 `-T` (`--test-files`) option to specify integration test cases to run.
@@ -54,7 +54,7 @@ Alternate Test Runner
 If you don't like the output of ``py.test``, there's an alternate test runner
 that you can start by running ``./run.py``. The above example could be run by::
 
-    ./run.py basic 4 6 8
+    ./run.py basic 4 6 8 50-80
 
 The advantage of this runner is simplicity and more customized error reports.
 Using both runners will help you to have a quicker overview of what's
@@ -64,7 +64,7 @@ happening.
 Auto-Completion
 +++++++++++++++
 
-Uses comments to specify a test in the next line. The comment says, which
+Uses comments to specify a test in the next line. The comment says which
 results are expected. The comment always begins with `#?`. The last row
 symbolizes the cursor.
 
@@ -94,8 +94,8 @@ Tests look like this::
     #! ['abc=1']
     abc
 
-Additionally it is possible to add a number which describes to position of
-the test (otherwise it's just end of line)::
+Additionally it is possible to specify the column by adding a number, which
+describes the position of the test (otherwise it's just the end of line)::
 
     #! 2 ['abc=1']
     abc
@@ -111,12 +111,18 @@ Tests look like this::
 """
 import os
 import re
+import sys
+import operator
 from ast import literal_eval
 from io import StringIO
 from functools import reduce
 
 import jedi
+from jedi import debug
 from jedi._compatibility import unicode, is_py3
+from jedi.parser.python import parse
+from jedi.api.classes import Definition
+from jedi.api.completion import get_user_scope
 
 
 TEST_COMPLETIONS = 0
@@ -127,7 +133,7 @@ TEST_USAGES = 3
 
 class IntegrationTestCase(object):
     def __init__(self, test_type, correct, line_nr, column, start, line,
-                 path=None):
+                 path=None, skip=None):
         self.test_type = test_type
         self.correct = correct
         self.line_nr = line_nr
@@ -135,7 +141,7 @@ class IntegrationTestCase(object):
         self.start = start
         self.line = line
         self.path = path
-        self.skip = None
+        self.skip = skip
 
     @property
     def module_name(self):
@@ -170,36 +176,38 @@ class IntegrationTestCase(object):
         return compare_cb(self, comp_str, set(literal_eval(self.correct)))
 
     def run_goto_definitions(self, compare_cb):
+        script = self.script()
+        evaluator = script._evaluator
+
         def comparison(definition):
             suffix = '()' if definition.type == 'instance' else ''
             return definition.desc_with_module + suffix
 
         def definition(correct, correct_start, path):
-            def defs(line_nr, indent):
-                s = jedi.Script(self.source, line_nr, indent, path)
-                return set(s.goto_definitions())
-
             should_be = set()
-            number = 0
-            for index in re.finditer('(?:[^ ]+)', correct):
-                end = index.end()
-                # +3 because of the comment start `#? `
-                end += 3
-                number += 1
-                try:
-                    should_be |= defs(self.line_nr - 1, end + correct_start)
-                except Exception:
-                    print('could not resolve %s indent %s'
-                          % (self.line_nr - 1, end))
-                    raise
-            # because the objects have different ids, `repr`, then compare.
+            for match in re.finditer('(?:[^ ]+)', correct):
+                string = match.group(0)
+                parser = parse(string, start_symbol='eval_input', error_recovery=False)
+                parser.get_root_node().move(self.line_nr)
+                element = parser.get_root_node()
+                module_context = script._get_module()
+                # The context shouldn't matter for the test results.
+                user_context = get_user_scope(module_context, (self.line_nr, 0))
+                if user_context.api_type == 'function':
+                    user_context = user_context.get_function_execution()
+                element.parent = user_context.tree_node
+                results = evaluator.eval_element(user_context, element)
+                if not results:
+                    raise Exception('Could not resolve %s on line %s'
+                                    % (match.string, self.line_nr - 1))
+
+                should_be |= set(Definition(evaluator, r.name) for r in results)
+            debug.dbg('Finished getting types', color='YELLOW')
+
+            # Because the objects have different ids, `repr`, then compare.
             should = set(comparison(r) for r in should_be)
-            if len(should) < number:
-                raise Exception('Solution @%s not right, too few test results: %s'
-                                % (self.line_nr - 1, should))
             return should
 
-        script = self.script()
         should = definition(self.correct, self.start, script.path)
         result = script.goto_definitions()
         is_str = set(comparison(r) for r in result)
@@ -232,12 +240,35 @@ class IntegrationTestCase(object):
         return compare_cb(self, compare, sorted(wanted))
 
 
-def collect_file_tests(lines, lines_to_execute):
-    makecase = lambda t: IntegrationTestCase(t, correct, line_nr, column,
-                                             start, line)
+def skip_python_version(line):
+    comp_map = {
+        '==': 'eq',
+        '<=': 'le',
+        '>=': 'ge',
+        '<': 'lt',
+        '>': 'gt',
+    }
+    # check for python minimal version number
+    match = re.match(r" *# *python *([<>]=?|==) *(\d+(?:\.\d+)?)$", line)
+    if match:
+        minimal_python_version = tuple(
+            map(int, match.group(2).split(".")))
+        operation = getattr(operator, comp_map[match.group(1)])
+        if not operation(sys.version_info, minimal_python_version):
+            return "Minimal python version %s %s" % (match.group(1), match.group(2))
+
+    return None
+
+
+def collect_file_tests(path, lines, lines_to_execute):
+    def makecase(t):
+        return IntegrationTestCase(t, correct, line_nr, column,
+                                   start, line, path=path, skip=skip)
+
     start = None
     correct = None
     test_type = None
+    skip = None
     for line_nr, line in enumerate(lines, 1):
         if correct is not None:
             r = re.match('^(\d+)\s*(.*)$', correct)
@@ -257,6 +288,7 @@ def collect_file_tests(lines, lines_to_execute):
                 yield makecase(TEST_DEFINITIONS)
             correct = None
         else:
+            skip = skip or skip_python_version(line)
             try:
                 r = re.search(r'(?:^|(?<=\s))#([?!<])\s*([^\n]*)', line)
                 # test_type is ? for completion and ! for goto_assignments
@@ -269,9 +301,14 @@ def collect_file_tests(lines, lines_to_execute):
             except AttributeError:
                 correct = None
             else:
-                # skip the test, if this is not specified test
-                if lines_to_execute and line_nr not in lines_to_execute:
-                    correct = None
+                # Skip the test, if this is not specified test.
+                for l in lines_to_execute:
+                    if isinstance(l, tuple) and l[0] <= line_nr <= l[1] \
+                            or line_nr == l:
+                        break
+                else:
+                    if lines_to_execute:
+                        correct = None
 
 
 def collect_dir_tests(base_dir, test_files, check_thirdparty=False):
@@ -296,9 +333,8 @@ def collect_dir_tests(base_dir, test_files, check_thirdparty=False):
             else:
                 source = unicode(open(path).read(), 'UTF-8')
 
-            for case in collect_file_tests(StringIO(source),
+            for case in collect_file_tests(path, StringIO(source),
                                            lines_to_execute):
-                case.path = path
                 case.source = source
                 if skip:
                     case.skip = skip
@@ -327,9 +363,6 @@ if __name__ == '__main__':
 
     import time
     t_start = time.time()
-    # Sorry I didn't use argparse here. It's because argparse is not in the
-    # stdlib in 2.5.
-    import sys
 
     if arguments['--debug']:
         jedi.set_debug_function()
@@ -338,7 +371,11 @@ if __name__ == '__main__':
     test_files = {}
     last = None
     for arg in arguments['<rest>']:
-        if arg.isdigit():
+        match = re.match('(\d+)-(\d+)', arg)
+        if match:
+            start, end = match.groups()
+            test_files[last].append((int(start), int(end)))
+        elif arg.isdigit():
             if last is None:
                 continue
             test_files[last].append(int(arg))
@@ -347,7 +384,9 @@ if __name__ == '__main__':
             last = arg
 
     # completion tests:
-    completion_test_dir = '../test/completion'
+    dir_ = os.path.dirname(os.path.realpath(__file__))
+    completion_test_dir = os.path.join(dir_, '../test/completion')
+    completion_test_dir = os.path.abspath(completion_test_dir)
     summary = []
     tests_fail = 0
 
@@ -374,6 +413,8 @@ if __name__ == '__main__':
     current = cases[0].path if cases else None
     count = fails = 0
     for c in cases:
+        if c.skip:
+            continue
         if current != c.path:
             file_change(current, count, fails)
             current = c.path

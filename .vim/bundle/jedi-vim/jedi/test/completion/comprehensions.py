@@ -30,8 +30,12 @@ a[0]
 
 arr = [1,'']
 a = [a for a in arr]
-#? int() str()
+#? int()
 a[0]
+#? str()
+a[1]
+#? int() str()
+a[2]
 
 a = [a if 1.0 else '' for a in [1] if [1.0]]
 #? int() str()
@@ -44,28 +48,8 @@ left, right = [x for x in (left, right)]
 left
 
 # with a dict literal
-#? str()
-[a for a in {1:'x'}][0]
-
-##? str()
-{a-1:b for a,b in {1:'a', 3:1.0}.items()}[0]
-
-# with a set literal
 #? int()
-[a for a in {1, 2, 3}][0]
-
-#? set()
-{a for a in range(10)}
-
-##? int()
-[x for x in {a for a in range(10)}][0]
-
-##? int()
-{a for a in range(10)}.pop()
-
-##? int()
-iter({a for a in range(10)}).next()
-
+[a for a in {1:'x'}][0]
 
 # list comprehensions should also work in combination with functions
 def listen(arg):
@@ -74,17 +58,28 @@ def listen(arg):
         x
 
 listen(['' for x in [1]])
-#? str
+#?
 ([str for x in []])[0]
 
+# with a set literal
+#? int()
+[a for a in {1, 2, 3}][0]
 
 # -----------------
 # nested list comprehensions
 # -----------------
 
-b = [a for arr in [[1]] for a in arr]
+b = [a for arr in [[1, 1.0]] for a in arr]
 #? int()
 b[0]
+#? float()
+b[1]
+
+b = [arr for arr in [[1, 1.0]] for a in arr]
+#? int()
+b[0][0]
+#? float()
+b[1][1]
 
 b = [a for arr in [[1]] if '' for a in arr if '']
 #? int()
@@ -94,9 +89,12 @@ b = [b for arr in [[[1.0]]] for a in arr for b in a]
 #? float()
 b[0]
 
+#? str()
+[x for x in 'chr'][0]
+
 # jedi issue #26
 #? list()
-a = [[int(v) for v in line.strip().split() if v] for line in ["123", "123", "123"] if line]
+a = [[int(v) for v in line.strip().split() if v] for line in ["123", str(), "123"] if line]
 #? list()
 a[0]
 #? int()
@@ -110,6 +108,8 @@ left, right = (i for i in (1, ''))
 
 #? int()
 left
+#? str()
+right
 
 gen = (i for i in (1,))
 
@@ -127,9 +127,52 @@ next(gen)
 
 # issues with different formats
 left, right = (i for i in
-                       ('1', '2'))
+                       ('1', 2))
 #? str()
 left
+#? int()
+right
+
+# -----------------
+# dict comprehensions
+# -----------------
+
+#? int()
+list({a - 1: 3 for a in [1]})[0]
+
+d = {a - 1: b for a, b in {1: 'a', 3: 1.0}.items()}
+#? int()
+list(d)[0]
+#? str() float()
+d.values()[0]
+#? str()
+d[0]
+#? float() str()
+d[1]
+#? float()
+d[2]
+
+# -----------------
+# set comprehensions
+# -----------------
+
+#? set()
+{a - 1 for a in [1]}
+
+#? set()
+{a for a in range(10)}
+
+#? int()
+[x for x in {a for a in range(10)}][0]
+
+#? int()
+{a for a in range(10)}.pop()
+#? float() str()
+{b for a in [[3.0], ['']] for b in a}.pop()
+
+#? int()
+next(iter({a for a in range(10)}))
+
 
 # -----------------
 # name resolution in comprehensions.
@@ -140,3 +183,31 @@ def x():
     #? 22
     [a for a in h if hio]
     if hio: pass
+
+# -----------------
+# slices
+# -----------------
+
+#? list()
+foo = [x for x in [1, '']][:1]
+#? int()
+foo[0]
+#? str()
+foo[1]
+
+# -----------------
+# In class
+# -----------------
+
+class X():
+    def __init__(self, bar):
+        self.bar = bar
+
+    def foo(self):
+        x = [a for a in self.bar][0]
+        #? int()
+        x
+        return x
+
+#? int()
+X([1]).foo()

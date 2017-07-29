@@ -30,6 +30,14 @@ if 2:
     ass
 
 # -----------------
+# invalid arguments
+# -----------------
+
+if isinstance(wrong, str()):
+    #?
+    wrong
+
+# -----------------
 # in functions
 # -----------------
 
@@ -55,6 +63,17 @@ a
 fooooo2('')
 
 
+def isinstance_func(arr):
+    for value in arr:
+        if isinstance(value, dict):
+            # Shouldn't fail, even with the dot.
+            #? 17 dict()
+            value.
+        elif isinstance(value, int):
+            x = value
+            #? int()
+            x
+
 # -----------------
 # Names with multiple indices.
 # -----------------
@@ -68,7 +87,15 @@ class Test():
 
     def boo(self):
         if isinstance(self.testing, str):
-            #? str()
+            # TODO this is wrong, it should only be str.
+            #? str() int()
             self.testing
             #? Test()
             self
+
+# -----------------
+# Syntax
+# -----------------
+
+#?
+isinstance(1, int())

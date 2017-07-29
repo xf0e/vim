@@ -1,6 +1,8 @@
 " MIT License. Copyright (c) 2013-2016 Bailey Ling.
 " vim: et ts=2 sts=2 sw=2
 
+scriptencoding utf-8
+
 let s:show_close_button = get(g:, 'airline#extensions#tabline#show_close_button', 1)
 let s:show_tab_type = get(g:, 'airline#extensions#tabline#show_tab_type', 1)
 let s:show_tab_nr = get(g:, 'airline#extensions#tabline#show_tab_nr', 1)
@@ -95,6 +97,9 @@ function! airline#extensions#tabline#tabs#get()
 endfunction
 
 function! airline#extensions#tabline#tabs#map_keys()
+  if exists("s:airline_tabline_map_key")
+    return
+  endif
   noremap <silent> <Plug>AirlineSelectTab1 :1tabn<CR>
   noremap <silent> <Plug>AirlineSelectTab2 :2tabn<CR>
   noremap <silent> <Plug>AirlineSelectTab3 :3tabn<CR>
@@ -107,4 +112,5 @@ function! airline#extensions#tabline#tabs#map_keys()
   noremap <silent> <Plug>AirlineSelectPrevTab gT
   " tabn {count} goes to count tab does not go {count} tab pages forward!
   noremap <silent> <Plug>AirlineSelectNextTab :<C-U>exe repeat(':tabn\|', v:count1)<cr>
+  let s:airline_tabline_map_key = 1
 endfunction

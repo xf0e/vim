@@ -7,6 +7,7 @@ from textwrap import dedent
 from jedi import api
 from jedi._compatibility import is_py3
 from pytest import raises
+from jedi.parser import cache
 
 
 def test_preload_modules():
@@ -16,14 +17,13 @@ def test_preload_modules():
         for i in modules:
             assert [i in k for k in parser_cache.keys() if k is not None]
 
-    from jedi import cache
     temp_cache, cache.parser_cache = cache.parser_cache, {}
     parser_cache = cache.parser_cache
 
     api.preload_module('sys')
     check_loaded()  # compiled (c_builtin) modules shouldn't be in the cache.
-    api.preload_module('json', 'token')
-    check_loaded('json', 'token')
+    api.preload_module('types', 'token')
+    check_loaded('types', 'token')
 
     cache.parser_cache = temp_cache
 
@@ -62,7 +62,8 @@ def _check_number(source, result='float'):
 
 def test_completion_on_number_literals():
     # No completions on an int literal (is a float).
-    assert api.Script('1.').completions() == []
+    assert [c.name for c in api.Script('1.').completions()] \
+        == ['and', 'if', 'in', 'is', 'not', 'or']
 
     # Multiple points after an int literal basically mean that there's a float
     # and a call after that.
@@ -82,9 +83,8 @@ def test_completion_on_hex_literals():
     _check_number('0x1.', 'int')  # hexdecimal
     # Completing binary literals doesn't work if they are not actually binary
     # (invalid statements).
-    assert api.Script('0b2.').completions() == []
+    assert api.Script('0b2.b').completions() == []
     _check_number('0b1.', 'int')  # binary
-    _check_number('0o7.', 'int')  # octal
 
     _check_number('0x2e.', 'int')
     _check_number('0xE7.', 'int')
@@ -98,8 +98,10 @@ def test_completion_on_complex_literals():
     _check_number('1j.', 'complex')
     _check_number('44.j.', 'complex')
     _check_number('4.0j.', 'complex')
-    # No dot no completion
-    assert api.Script('4j').completions() == []
+    # No dot no completion - I thought, but 4j is actually a literall after
+    # which a keyword like or is allowed. Good times, haha!
+    assert (set([c.name for c in api.Script('4j').completions()]) ==
+            set(['if', 'and', 'in', 'is', 'not', 'or']))
 
 
 def test_goto_assignments_on_non_name():
@@ -110,11 +112,16 @@ def test_goto_assignments_on_non_name():
         assert api.Script('True').goto_assignments() == []
     else:
         # In Python 2.7 True is still a name.
-        assert api.Script('True').goto_assignments()[0].description == 'class bool'
+        assert api.Script('True').goto_assignments()[0].description == 'instance True'
 
 
 def test_goto_definitions_on_non_name():
     assert api.Script('import x', column=0).goto_definitions() == []
+
+
+def test_goto_definitions_on_generator():
+    def_, = api.Script('def x(): yield 1\ny=x()\ny').goto_definitions()
+    assert def_.name == 'generator'
 
 
 def test_goto_definition_not_multiple():
@@ -143,3 +150,52 @@ def test_goto_definition_not_multiple():
 def test_usage_description():
     descs = [u.description for u in api.Script("foo = ''; foo").usages()]
     assert set(descs) == set(["foo = ''", 'foo'])
+
+
+def test_get_line_code():
+    def get_line_code(source, line=None, **kwargs):
+        return api.Script(source, line=line).completions()[0].get_line_code(**kwargs)
+
+    # On builtin
+    assert get_line_code('') == ''
+
+    # On custom code
+    line = '    foo'
+    assert get_line_code('def foo():\n%s' % line) == line
+
+    # With before/after
+    line = '    foo'
+    source = 'def foo():\n%s\nother_line' % line
+    assert get_line_code(source, line=2) == line + '\n'
+    assert get_line_code(source, line=2, after=1) == line + '\nother_line'
+    assert get_line_code(source, line=2, after=1, before=1) == source
+
+
+def test_goto_assignments_follow_imports():
+    code = dedent("""
+    import inspect
+    inspect.isfunction""")
+    definition, = api.Script(code, column=0).goto_assignments(follow_imports=True)
+    assert 'inspect.py' in definition.module_path
+    assert (definition.line, definition.column) == (1, 0)
+
+    definition, = api.Script(code).goto_assignments(follow_imports=True)
+    assert 'inspect.py' in definition.module_path
+    assert (definition.line, definition.column) > (1, 0)
+
+    code = '''def param(p): pass\nparam(1)'''
+    start_pos = 1, len('def param(')
+
+    script = api.Script(code, *start_pos)
+    definition, = script.goto_assignments(follow_imports=True)
+    assert (definition.line, definition.column) == start_pos
+    assert definition.name == 'p'
+    result, = definition.goto_assignments()
+    assert result.name == 'p'
+    result, = definition._goto_definitions()
+    assert result.name == 'int'
+    result, = result._goto_definitions()
+    assert result.name == 'int'
+
+    definition, = script.goto_assignments()
+    assert (definition.line, definition.column) == start_pos
